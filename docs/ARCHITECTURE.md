@@ -15,6 +15,7 @@ This document records the design goals from the initial refactor and their compl
 | CLI catalog cache | Done | `unity-cmd/src/catalog.js` → `~/.unity-cmd/cache/` |
 | No hardcoded CLI command table | Done | `commands.js` removed; bootstrap aliases for offline/legacy only |
 | Editor diagnostics tools | Done | `editor.console`, `editor.menu`, `editor.screenshot` |
+| Extended editor tools (reference port) | Done | `editor.exec`, `editor.profiler`, `editor.manage`, `editor.reserialize` |
 
 ## Request flow
 

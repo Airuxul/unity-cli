@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace UnityCliConnector
 {
@@ -40,6 +41,52 @@ namespace UnityCliConnector
             if (int.TryParse(raw.ToString(), out var parsed))
                 return parsed;
             return defaultValue;
+        }
+
+        public float? GetFloat(string key, float? defaultValue = null)
+        {
+            if (!_values.TryGetValue(key, out var raw) || raw == null)
+                return defaultValue;
+            if (raw is float f)
+                return f;
+            if (raw is double d)
+                return (float)d;
+            if (float.TryParse(raw.ToString(), out var parsed))
+                return parsed;
+            return defaultValue;
+        }
+
+        public string[] GetStringArray(string key)
+        {
+            if (!_values.TryGetValue(key, out var raw) || raw == null)
+                return Array.Empty<string>();
+
+            if (raw is string[] arr)
+                return arr;
+
+            if (raw is IEnumerable<string> enumerable)
+                return enumerable.ToArray();
+
+            if (raw is System.Collections.IEnumerable list && raw is not string)
+            {
+                var items = new List<string>();
+                foreach (var item in list)
+                {
+                    if (item != null)
+                        items.Add(item.ToString());
+                }
+
+                return items.ToArray();
+            }
+
+            var text = raw.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+                return Array.Empty<string>();
+
+            return text.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToArray();
         }
 
         public Dictionary<string, object> ToDictionary() =>

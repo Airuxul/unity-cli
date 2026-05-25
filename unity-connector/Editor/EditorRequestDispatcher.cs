@@ -6,7 +6,7 @@ namespace UnityCliConnector
 {
     public sealed class EditorRequestDispatcher : IRequestDispatcher
     {
-        public const int ConnectorBuild = 5;
+        public const int ConnectorBuild = 6;
 
         public bool TryDispatch(string method, string path, string body, Action<int, Dictionary<string, object>> writeJson)
         {

@@ -2,7 +2,7 @@
 
 Unity Editor / Player HTTP bridge for [unity-cmd](../unity-cmd/).
 
-**Version:** 0.1.2  
+**Version:** 0.1.3  
 **UPM name:** `com.airuxul.unity-connector`
 
 ## Install (local path)
@@ -35,6 +35,10 @@ Open the project in the Editor. The connector logs a URL like `http://127.0.0.1:
 | `editor.console` | editor | no (`console`, `logs`) |
 | `editor.menu` | editor | no (`menu`) |
 | `editor.screenshot` | editor | no (`screenshot`) |
+| `editor.exec` | editor | no (`exec`) |
+| `editor.profiler` | editor | no (`profiler`) |
+| `editor.manage` | editor | no (`manage`) |
+| `editor.reserialize` | editor | no (`reserialize`) |
 
 ### Console
 
@@ -42,6 +46,10 @@ Open the project in the Editor. The connector logs a URL like `http://127.0.0.1:
 unity-cmd console --type error,warning --lines 20
 unity-cmd console --stacktrace full
 unity-cmd console --clear
+unity-cmd exec --code "return Application.productName;"
+unity-cmd profiler --action status
+unity-cmd manage --action pause
+unity-cmd reserialize --path Assets/SomePrefab.prefab
 ```
 
 ## Extend with `[CliCommand]`

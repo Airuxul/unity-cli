@@ -88,4 +88,6 @@ test('bootstrap aliases without catalog entries', () => {
   assert.equal(r.command, 'editor.console');
   const logs = resolveRemoteCommand('logs', {}, empty);
   assert.equal(logs.command, 'editor.console');
+  assert.equal(resolveRemoteCommand('exec', {}, empty).command, 'editor.exec');
+  assert.equal(resolveRemoteCommand('profiler', {}, empty).command, 'editor.profiler');
 });

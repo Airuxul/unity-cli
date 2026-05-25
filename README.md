@@ -38,6 +38,9 @@ unity-cmd logs --lines 10         # alias of console
 unity-cmd editor.play
 unity-cmd menu --menu_path "File/Save Project"
 unity-cmd screenshot --view game
+unity-cmd exec --code "return 42;"
+unity-cmd profiler --action status
+unity-cmd manage --action stop
 ```
 
 After changing **unity-connector** sources, reload scripts in the open Editor:

@@ -99,6 +99,10 @@ Usage:
   unity-cmd console --clear
   unity-cmd menu --menu_path "File/Save Project"
   unity-cmd screenshot [--view scene|game] [--output_path path]
+  unity-cmd exec --code "return 1+1;"
+  unity-cmd profiler --action status
+  unity-cmd manage --action pause
+  unity-cmd reserialize --path Assets/foo.prefab
   unity-cmd <command> [--key value] [--timeout ms]
 
 Environment:

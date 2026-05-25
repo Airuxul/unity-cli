@@ -5,7 +5,7 @@
       "name": "ping",
       "command": "ping",
       "expect": { "ok": true },
-      "expectConnectorBuild": 5
+      "expectConnectorBuild": 6
     },
     {
       "name": "list_catalog",
@@ -15,6 +15,8 @@
         "commands": [
           "compile",
           "editor.console",
+          "editor.exec",
+          "editor.profiler",
           "editor.play",
           "ping"
         ]
@@ -31,6 +33,19 @@
       "command": "logs",
       "args": ["--lines", "1"],
       "expect": { "ok": true, "dataHas": ["count"] }
+    },
+    {
+      "name": "profiler_status",
+      "command": "profiler",
+      "args": ["--action", "status"],
+      "expect": { "ok": true, "dataHas": ["enabled", "frame_count"] }
+    },
+    {
+      "name": "exec_add",
+      "command": "exec",
+      "args": ["--code", "return 1 + 1;"],
+      "timeoutMs": 90000,
+      "expect": { "ok": true, "dataHas": ["result"] }
     },
     {
       "name": "enter_play",

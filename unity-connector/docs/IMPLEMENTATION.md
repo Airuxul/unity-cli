@@ -1,6 +1,6 @@
 # unity-connector — Implementation
 
-Version: 0.1.2
+Version: 0.1.3
 
 ## Assemblies
 
@@ -92,6 +92,10 @@ Port: `UNITY_CMD_PORT` or `6400 + hash(dataPath) % 800`.
 | `editor.console` | `console`, `logs` | Read/clear Unity console via `LogEntries` reflection |
 | `editor.menu` | `menu` | `EditorApplication.ExecuteMenuItem` |
 | `editor.screenshot` | `screenshot` | Scene/Game view PNG capture |
+| `editor.exec` | `exec` | Compile & run C# via Unity `csc` |
+| `editor.profiler` | `profiler` | Profiler hierarchy / enable / status / clear |
+| `editor.manage` | `manage` | Play, stop, pause, refresh, tags, layers, tools |
+| `editor.reserialize` | `reserialize` | `AssetDatabase.ForceReserializeAssets` |
 
 ### `editor.console` parameters
 
@@ -99,6 +103,27 @@ Port: `UNITY_CMD_PORT` or `6400 + hash(dataPath) % 800`.
 - `lines` / `count` — max entries
 - `stacktrace` — `none`, `user` (default), `full`
 - `clear` — clear console when `true`
+
+### `editor.exec` parameters
+
+- `code` — C# source (use `return` for output)
+- `usings` — extra namespaces (comma-separated)
+- `csc` / `dotnet` — override compiler paths
+
+### `editor.profiler` parameters
+
+- `action` — `hierarchy` (default), `enable`, `disable`, `status`, `clear`
+- `frame`, `from`, `to`, `frames`, `thread`, `parent`, `root`, `min`, `sort`, `max`, `depth`
+
+### `editor.manage` parameters
+
+- `action` — `play`, `stop`, `pause`, `refresh`, `set_active_tool`, `add_tag`, `remove_tag`, `add_layer`, `remove_layer`
+- `wait_for_completion` — block until play mode transition finishes
+- `tool_name`, `tag_name`, `layer_name` — per action
+
+### `editor.reserialize` parameters
+
+- `path` — single asset path, or `paths` comma-separated; omit for entire project
 
 ## Main-thread execution
 

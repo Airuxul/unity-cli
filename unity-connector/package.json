@@ -1,6 +1,6 @@
 {
   "name": "com.airuxul.unity-connector",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "displayName": "Unity CLI Connector",
   "description": "HTTP command bridge for unity-cmd CLI",
   "unity": "2021.3",

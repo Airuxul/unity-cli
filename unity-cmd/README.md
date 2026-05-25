@@ -26,6 +26,10 @@ unity-cmd logs               # alias → editor.console
 unity-cmd menu --menu_path "File/Save Project"
 unity-cmd screenshot --view game --output_path Screenshots/game.png
 unity-cmd refresh --compile true   # AssetDatabase refresh + compile job
+unity-cmd exec --code "return 1+1;"
+unity-cmd profiler --action hierarchy --max 10
+unity-cmd manage --action pause
+unity-cmd reserialize              # entire project (slow)
 ```
 
 Commands and aliases come from Unity (`POST /list`), cached under `~/.unity-cmd/cache/`. Local-only: `ping`, `list`, `help`.
