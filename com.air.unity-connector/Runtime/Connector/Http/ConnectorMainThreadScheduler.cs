@@ -18,6 +18,7 @@ namespace Air.UnityConnector.Http
         private readonly Action _onBeforeDrain;
         private readonly Action _wakeMainThread;
         private readonly Func<bool> _canAcceptCommand;
+        private readonly Action<string, string, Action<int, Dictionary<string, object>>, Action> _registerPendingHttp;
         private readonly ConcurrentQueue<MainThreadHttpWork.Item> _queue = new();
         private int _commandBusy;
 
@@ -27,7 +28,8 @@ namespace Air.UnityConnector.Http
             Action onCatalogReady = null,
             Action onBeforeDrain = null,
             Action wakeMainThread = null,
-            Func<bool> canAcceptCommand = null)
+            Func<bool> canAcceptCommand = null,
+            Action<string, string, Action<int, Dictionary<string, object>>, Action> registerPendingHttp = null)
         {
             _host = host ?? throw new ArgumentNullException(nameof(host));
             _getInvokeJobStatus = getInvokeJobStatus;
@@ -35,6 +37,7 @@ namespace Air.UnityConnector.Http
             _onBeforeDrain = onBeforeDrain;
             _wakeMainThread = wakeMainThread;
             _canAcceptCommand = canAcceptCommand;
+            _registerPendingHttp = registerPendingHttp;
         }
 
         public void Schedule(string body, Action<int, Dictionary<string, object>> writeJson)
@@ -91,25 +94,32 @@ namespace Air.UnityConnector.Http
             });
         }
 
+        public void ReleaseCommandSlot() => Interlocked.Exchange(ref _commandBusy, 0);
+
         public void Drain()
         {
             _onBeforeDrain?.Invoke();
 
             while (_queue.TryDequeue(out var item))
             {
-                var releaseCommandSlot = item.Kind == MainThreadHttpWork.Kind.Command;
+                var isCommand = item.Kind == MainThreadHttpWork.Kind.Command;
                 try
                 {
-                    MainThreadHttpWork.Process(
+                    var release = MainThreadHttpWork.Process(
                         item,
                         _host,
                         _getInvokeJobStatus,
-                        _onCatalogReady);
-                }
-                finally
-                {
-                    if (releaseCommandSlot)
+                        _onCatalogReady,
+                        _registerPendingHttp);
+
+                    if (isCommand && release)
                         Interlocked.Exchange(ref _commandBusy, 0);
+                }
+                catch
+                {
+                    if (isCommand)
+                        Interlocked.Exchange(ref _commandBusy, 0);
+                    throw;
                 }
             }
         }

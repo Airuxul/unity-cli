@@ -17,12 +17,12 @@ unity-cmd  →  GET /health, POST /list, POST /command, GET /commands/{id}
 ```
 
 - Unity publishes the command catalog (`POST /list`); the CLI resolves aliases and caches it per endpoint (`~/.unity-cmd/cache/catalog-<host>:<port>.json`).
-- Long work (`compile`, `play`, …) returns **HTTP 202**; the CLI polls `GET /commands/{id}`.
+- Long work (`compile`, `play`, `stop`, …) completes in **one POST** (CONN-10). HTTP 202 is rejected.
 - Failures are JSON: `ok`, `error_code`, optional `hint`.
 
 Built-ins include play/stop, console, exec, profiler, screenshot, menu, reserialize. Extend commands in the connector — see [com.air.unity-connector/README.md](com.air.unity-connector/README.md).
 
-Editor commands wait on `~/.unity-cmd/instances/*.json` heartbeat + `editor-http.json` + `/health` (`session_id` / `generation`) so domain reloads do not hit a stale listener.
+Editor readiness: `~/.unity-cmd/instances/*.json` (SSOT) + `/health` confirm (`session_id` / `generation`).
 
 ## Quick start
 
@@ -207,7 +207,7 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#runtime--play-mode-http), [
 | Variable | Side | Purpose |
 |----------|------|---------|
 | `UNITY_CMD_PROFILE` | CLI | Default profile name (`--profile` overrides) |
-| `UNITY_CMD_WORKSPACE` | CLI | Integration tests only: Unity project root for `assertFile` |
+| `UNITY_CMD_WORKSPACE` | CLI | Integration tests: Unity project root (`Assets/` writes, `assertFile`, `wait` heartbeat `projectPath` match). Omit for daily `ping`/`compile`. |
 | `UNITY_CMD_SCENARIO` | CLI | Integration tests: scenario name |
 | `UNITY_CMD_TIMEOUT_MS` | CLI | Timeout (default `20000`) |
 | `UNITY_CMD_TOKEN` | CLI + Unity | Optional shared auth token |

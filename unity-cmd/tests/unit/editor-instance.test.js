@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {
   isEditorInstanceBusy,
   isEditorInstanceReady,
+  instanceMatchesTarget,
   normalizeHealthState,
   readPlayMode,
   readCommandsReady,
   readConnectorState,
+  resolveWaitProjectPath,
 } from '../../src/client/connector-readiness.js';
-import { cacheMatchesInstance } from '../../src/client/editor-http-cache.js';
 import {
   CONNECTOR_BUSY_STATES,
   CONNECTOR_STATE,
@@ -117,6 +118,46 @@ test('listener_running=false is busy regardless of connector_state', () => {
     isEditorInstanceBusy(inst({ connector_state: CONNECTOR_STATE.Ready, listener_running: false })),
     true,
   );
+});
+
+test('supervisor Draining/Starting phases are busy', () => {
+  assert.equal(isEditorInstanceBusy(inst({ supervisor_phase: 'Draining' })), true);
+  assert.equal(isEditorInstanceBusy(inst({ supervisor_phase: 'Starting' })), true);
+});
+
+test('compile_errors on instance heartbeat is busy', () => {
+  assert.equal(isEditorInstanceBusy(inst({ compile_errors: true })), true);
+});
+
+test('instanceMatchesTarget checks port and optional project path', () => {
+  const target = { port: DEFAULT_EDITOR_PORT };
+  assert.equal(
+    instanceMatchesTarget(target, inst({ port: DEFAULT_EDITOR_PORT }), null),
+    true,
+  );
+  assert.equal(
+    instanceMatchesTarget(target, inst({ port: 6794 }), null),
+    false,
+  );
+  assert.equal(
+    instanceMatchesTarget(
+      target,
+      inst({ port: DEFAULT_EDITOR_PORT, projectPath: 'C:/Project/GameDemo' }),
+      'C:\\Project\\GameDemo\\',
+    ),
+    true,
+  );
+});
+
+test('resolveWaitProjectPath prefers UNITY_CMD_WORKSPACE over cwd', () => {
+  const prev = process.env.UNITY_CMD_WORKSPACE;
+  process.env.UNITY_CMD_WORKSPACE = 'C:/Project/GameDemo';
+  try {
+    assert.equal(resolveWaitProjectPath(), 'C:/Project/GameDemo');
+  } finally {
+    if (prev === undefined) delete process.env.UNITY_CMD_WORKSPACE;
+    else process.env.UNITY_CMD_WORKSPACE = prev;
+  }
 });
 
 // ---------- isEditorInstanceBusy — compile-fail / reloading -----------------
@@ -242,65 +283,4 @@ test('ready state but commands_ready=false is still busy', () => {
   });
   assert.equal(isEditorInstanceBusy(notReady), true);
   assert.equal(isEditorInstanceReady(notReady), false);
-});
-
-// ---------- cacheMatchesInstance --------------------------------------------
-
-test('cacheMatchesInstance: same session and generation passes', () => {
-  const readCache = () => ({
-    port: DEFAULT_EDITOR_PORT,
-    status: 'running',
-    session_id: 'sess-1',
-    generation: 5,
-  });
-  assert.equal(
-    cacheMatchesInstance({ port: DEFAULT_EDITOR_PORT }, { session_id: 'sess-1', generation: 5 }, readCache),
-    true,
-  );
-});
-
-test('cacheMatchesInstance: different session rejects', () => {
-  const readCache = () => ({
-    port: DEFAULT_EDITOR_PORT,
-    status: 'running',
-    session_id: 'old-session',
-    generation: 5,
-  });
-  assert.equal(
-    cacheMatchesInstance({ port: DEFAULT_EDITOR_PORT }, { session_id: 'new-session', generation: 5 }, readCache),
-    false,
-  );
-});
-
-test('cacheMatchesInstance: different generation rejects', () => {
-  const readCache = () => ({
-    port: DEFAULT_EDITOR_PORT,
-    status: 'running',
-    session_id: 'sess-1',
-    generation: 3,
-  });
-  assert.equal(
-    cacheMatchesInstance({ port: DEFAULT_EDITOR_PORT }, { session_id: 'sess-1', generation: 5 }, readCache),
-    false,
-  );
-});
-
-test('cacheMatchesInstance: stopped cache always matches (reloading scenario)', () => {
-  const readCache = () => ({
-    port: DEFAULT_EDITOR_PORT,
-    status: 'stopped',
-    session_id: 'old-session',
-    generation: 1,
-  });
-  assert.equal(
-    cacheMatchesInstance({ port: DEFAULT_EDITOR_PORT }, { session_id: 'new-session', generation: 99 }, readCache),
-    true,
-  );
-});
-
-test('cacheMatchesInstance: no cache (null) always passes', () => {
-  assert.equal(
-    cacheMatchesInstance({ port: DEFAULT_EDITOR_PORT }, { session_id: 'any', generation: 1 }, () => null),
-    true,
-  );
 });

@@ -44,7 +44,7 @@
 
 - 配置目录 `~/.unity-cmd/profiles/`
 - 自 `POST /list` 缓存目录；`/health` 版本失效
-- 编辑器就绪：实例心跳 + `editor-http.json` + session/generation
+- 编辑器就绪：`~/.unity-cmd/instances/*.json`（SSOT）+ `/health`；`editor-http.json` 仅调试
 - 集成场景：编辑器生命周期、编译恢复、Player 运行时
 
 ### 待办列表

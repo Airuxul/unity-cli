@@ -17,12 +17,12 @@ unity-cmd  →  --profile  →  GET /health  →  POST /command、/jobs
 ```
 
 - 命令目录由 Unity 提供（`POST /list`），CLI 解析别名并按工程缓存。
-- 长任务（`compile`、`play` 等）返回 **HTTP 202**，CLI 轮询 `GET /commands/{id}`。
+- 长任务在 **单次 POST** 内完成（CONN-10）；HTTP 202 视为错误。
 - 失败输出 JSON：`ok`、`error_code`、可选 `hint`。
 
 内置：进出场、控制台、exec、profiler、截图、菜单、重序列化等。扩展见 [com.air.unity-connector/README.zh-CN.md](com.air.unity-connector/README.zh-CN.md)。
 
-Editor 命令发送前会等待 `~/.unity-cmd/instances/*.json` 心跳、`editor-http.json` 与 `/health`（`session_id` / `generation`），避免域重载后连到旧 listener。
+Editor 就绪：`~/.unity-cmd/instances/*.json`（SSOT）+ `/health` 确认（`session_id` / `generation`）。
 
 ## 快速开始
 
@@ -211,7 +211,7 @@ npm run test:integration
 | 变量 | 侧 | 用途 |
 |------|-----|------|
 | `UNITY_CMD_PROFILE` | CLI | 默认 profile 名称（也可用 `--profile`） |
-| `UNITY_CMD_WORKSPACE` | CLI | 仅集成测试：Unity 工程根目录（截图文件断言） |
+| `UNITY_CMD_WORKSPACE` | CLI | 集成测试：Unity 工程根（`Assets/` 读写、`assertFile`、`wait` 与实例 `projectPath` 对齐）。日常命令可不设。 |
 | `UNITY_CMD_SCENARIO` | CLI | 集成测试：场景名 |
 | `UNITY_CMD_TIMEOUT_MS` | CLI | 超时（默认 `20000`） |
 | `UNITY_CMD_TOKEN` | CLI + Unity | 可选共享鉴权令牌 |

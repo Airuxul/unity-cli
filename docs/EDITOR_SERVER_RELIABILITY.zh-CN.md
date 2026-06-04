@@ -1,6 +1,6 @@
 # Editor HTTP Server 可靠性架构方案（完整版）
 
-**版本：** 0.2  
+**版本：** 0.3（CONN-10 + instances SSOT）  
 **日期：** 2026-06-04  
 **范围：** `com.air.unity-connector`（Editor :6547）+ `unity-cmd`  
 **读者：** 实现者、Agent 门禁、Code Review
@@ -26,6 +26,28 @@
 
 ---
 
+## 0.1 已落地：CONN-10 同步命令（build ≥ 40）
+
+| 项 | 行为 |
+|----|------|
+| POST | `compile` / `play` / `stop` / `refresh?compile=true` 挂起 HTTP 直至终态，返回 **200/4xx**；**禁止** HTTP 202 |
+| 多帧完成 | `PendingHttpResponses` 在 job Tick 写回挂起 HTTP，避免主线程 Drain 死锁 |
+| 重载 | Draining 时 `FlushToLedger`；**无** `TryCompleteIdleCompilationJobs` 补完 |
+| 断线恢复 | CLI：`unity-cmd wait` → `GET /commands/{id}` 只读账本（可选重发） |
+| CLI 版本门 | `MIN_CONNECTOR_BUILD` 与 `ConnectorBuild.Id` 硬匹配；无旧版兼容 |
+
+## 0.2 已落地：CLI 就绪 SSOT（R2）
+
+| 来源 | 角色 |
+|------|------|
+| `~/.unity-cmd/instances/{hash}.json` | **唯一** `wait` / `resolveTarget` 重启判断输入（含 `supervisor_phase`、`http_status`、`compile_errors`） |
+| `GET /health` | 确认 `commands_ready` / `session_id` / `generation`（不替代心跳） |
+| `~/.unity-cmd/editor-http.json` | **仅调试**；Unity 仍写，CLI **不再**用于 wait 回退 |
+
+集成验收：`UNITY_CMD_INTEGRATION_STRESS=1` 时运行 `editor-reliability-stress`（3× compile + 5× play/stop）。
+
+---
+
 ## 1. 你遇到的三类现象 —— 根因链
 
 ```text
@@ -43,13 +65,13 @@
 
 **本质：** 不是缺缓存，而是缺 **「监督相位」单写者 + 停止后可验证 + 启动前排他」**。
 
-已有缓存（实现良好、应保留）：
+已有缓存：
 
 | 缓存 | 路径 | 作用 |
 |------|------|------|
-| Listener | `~/.unity-cmd/editor-http.json` | pid/session/generation/listener_id/status |
-| 心跳 | `~/.unity-cmd/instances/{hash}.json` | CLI 无需 HTTP 即可判断 reloading/compile_errors |
-| Job | `~/.unity-cmd/jobs/{project}/{id}.json` | deferred 命令跨域重载可查 |
+| **心跳（SSOT）** | `~/.unity-cmd/instances/{hash}.json` | CLI `wait`：connector_state、supervisor_phase、listener_running、compile_errors |
+| Listener（调试） | `~/.unity-cmd/editor-http.json` | Unity 本地镜像；**CLI 不读** |
+| Job | `~/.unity-cmd/jobs/{project}/{id}.json` | 跨域重载 `GET /commands/{id}` 只读恢复 |
 
 ---
 
@@ -76,14 +98,13 @@ flowchart TB
   subgraph CLI["unity-cmd"]
     W["wait"]
     P["ping + diagnostics"]
-    CMD["POST /command + poll"]
+    CMD["POST /command sync"]
   end
 
   SUP --> C1
   SUP --> C2
   JOB --> C3
   W --> C2
-  W --> C1
   P --> HTTP
   CMD --> HTTP
   CMD --> C3
@@ -312,6 +333,7 @@ stateDiagram-v2
 
 | 输出 | 路径 / 过滤 |
 |------|-------------|
+| Console 总开关 | `ConnectorLog.Enabled`（默认 `true`）；Editor 菜单 **Air → Unity Connector → Console Logs** |
 | Supervisor 决策轨迹 | Console：`[unity-connector][supervisor]` |
 | 环形文件日志 | `~/.unity-cmd/editor-server-trace.log`（约 512KB 后保留尾部） |
 | 最后一次启动失败 | `~/.unity-cmd/last-editor-startup-failure.txt`（成功启动后自动删除） |

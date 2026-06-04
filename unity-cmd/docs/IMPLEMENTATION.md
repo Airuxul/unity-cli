@@ -19,11 +19,11 @@ Thin HTTP client and argv front-end. No Unity business logic; all commands come 
 | `src/cli.js` | `parseArgs` (`--key=value`, `--timeout`, `--help`); command routing |
 | `src/remote-command.js` | `ping`, `list`, remote command execution |
 | `src/client/connection.js` | Profiles, `resolveTarget`, host-kind helpers |
-| `src/client/connector-readiness.js` | Instance heartbeat, `waitForConnectorReady`, `waitForProfileReady` |
-| `src/client/editor-http-cache.js` | `~/.unity-cmd/editor-http.json` session coordination |
+| `src/client/instances-io.js` | Read `~/.unity-cmd/instances/*.json` (CLI readiness SSOT) |
+| `src/client/connector-readiness.js` | `waitForConnectorReady`, `waitForProfileReady` |
+| `src/client/instance-diagnostics.js` | `NO_INSTANCE` `diagnostics.reason` |
 | `src/client/http.js` | `fetch` + `AbortSignal` timeout |
-| `src/client/command-status.js` | Poll `GET /commands/{id}` until terminal status |
-| `src/client/command.js` | `ping`, `fetchCatalog`, `sendCommand` |
+| `src/client/command.js` | `ping`, `fetchCatalog`, `sendCommand`, `fetchCommandStatus` (single GET) |
 | `src/profile.js` | `profile list|show|create|set|delete` |
 | `src/catalog.js` | Cache, alias resolve, scope checks, cache invalidation |
 | `src/params.js` | Coerce flags for Unity JSON bodies |
@@ -48,7 +48,7 @@ Remote commands require `--profile <name>` or `UNITY_CMD_PROFILE`.
   "ok": true,
   "profile": "editor",
   "catalog_version": "4a6528daab10",
-  "connector_build": 39,
+  "connector_build": 40,
   "commands": [
     {
       "name": "console",
@@ -95,7 +95,7 @@ Integration mapping (`PROFILE_BY_HOST_KIND`): `editor_play` → profile `editor-
 
 1. `requireProfile` → `createCommandBudget(20s)` → `resolveTarget` / `loadCatalog` share remaining budget
 2. All host kinds: `waitForConnectorReady` before `sendCommand` (Play Mode is orthogonal to connector readiness)
-3. `sendCommand` → `POST /command`; deferred commands poll `GET /commands/{id}` until terminal status
+3. `sendCommand` → `POST /command` (CONN-10: blocks until 200/4xx). HTTP 202 → error.
 
 ## Integration tests
 

@@ -31,7 +31,7 @@ export function checkMinConnectorBuild(build) {
   return cliError(
     `Connector build ${n} is below required minimum ${MIN_CONNECTOR_BUILD}.`,
     'CONNECTOR_OUTDATED',
-    'Open Unity Editor and run: unity-cmd --profile editor compile (or update com.air.unity-connector).',
+    'Update com.air.unity-connector in the project and recompile scripts in Unity Editor.',
     { connector_build: n, min_connector_build: MIN_CONNECTOR_BUILD },
   );
 }

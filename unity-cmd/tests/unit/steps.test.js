@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { flattenScenarioSteps, runStep } from '../integration/lib/steps.mjs';
+
+const integrationDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'integration');
 
 test('flattenScenarioSteps expands repeat blocks with stable names', () => {
   const flat = flattenScenarioSteps([
@@ -118,4 +121,26 @@ test('runStep assertFile checks size', async () => {
   assert.equal(bad.status, 'failed');
 
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('compile-recompile-cycle scenario loads and flattens 3x script churn', () => {
+  const file = path.join(integrationDir, 'scenarios', 'compile-recompile-cycle.json');
+  const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(scenario.name, 'compile-recompile-cycle');
+  const flat = flattenScenarioSteps(scenario.steps);
+  assert.equal(flat.length, 34);
+  assert.ok(flat.some((s) => s.name === '05_recompile_script_churn_1_compile_after_add'));
+  assert.ok(flat.some((s) => s.name === '05_recompile_script_churn_3_compile_after_remove'));
+  const compileSteps = flat.filter((s) => s.command === 'compile');
+  assert.equal(compileSteps.length, 7);
+});
+
+test('gamedemo-scene-switch-play scenario loads and flattens', () => {
+  const file = path.join(integrationDir, 'scenarios', 'gamedemo-scene-switch-play.json');
+  const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(scenario.name, 'gamedemo-scene-switch-play');
+  const flat = flattenScenarioSteps(scenario.steps);
+  assert.equal(flat.length, 32);
+  assert.ok(flat.some((s) => s.name === '04_open_statup_scene'));
+  assert.ok(flat.some((s) => s.name.startsWith('21_repeat_scene_switch_then_play_1_')));
 });

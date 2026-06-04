@@ -277,6 +277,18 @@ function finishCliStep(step, res, started, { checkExpect = false, expectFailure 
             return fail(step.name, started, `data missing key: ${dk}`);
           }
         }
+        continue;
+      }
+      if (key === 'dataResultContains') {
+        const text = String(parsed.data?.result ?? '');
+        if (!text.includes(expected)) {
+          return fail(
+            step.name,
+            started,
+            `exec result expected to contain "${expected}", got "${text}"`,
+          );
+        }
+        continue;
       }
     }
   }

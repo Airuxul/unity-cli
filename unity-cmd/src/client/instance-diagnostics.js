@@ -1,47 +1,16 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import net from 'node:net';
+import { CONNECTOR_FIELD, CONNECTOR_STATE } from '../constants.js';
 import {
-  CONNECTOR_FIELD,
-  CONNECTOR_STATE,
-  EDITOR_HTTP_CACHE_STATUS,
-  INSTANCES_DIR,
-} from '../constants.js';
-import { findInstanceByPort, readInstanceFile } from './connector-readiness.js';
-import { readEditorHttpCache } from './editor-http-cache.js';
+  findInstanceByPort,
+  findInstanceByProject,
+  normalizeProjectPath,
+} from './instances-io.js';
 import { ping } from './command.js';
+
+export { normalizeProjectPath, findInstanceByProject } from './instances-io.js';
 
 export const HEALTH_PROBE_MS = 1_500;
 export const PORT_PROBE_MS = 400;
-
-export function normalizeProjectPath(projectPath) {
-  return String(projectPath ?? '')
-    .replace(/\\/g, '/')
-    .replace(/\/+$/, '')
-    .toLowerCase();
-}
-
-export function findInstanceByProject(projectPath) {
-  const want = normalizeProjectPath(projectPath);
-  if (!want || !fs.existsSync(INSTANCES_DIR)) return null;
-
-  let best = null;
-  let bestTs = 0;
-
-  for (const name of fs.readdirSync(INSTANCES_DIR)) {
-    if (!name.endsWith('.json')) continue;
-    const inst = readInstanceFile(path.join(INSTANCES_DIR, name));
-    if (!inst?.projectPath) continue;
-    if (normalizeProjectPath(inst.projectPath) !== want) continue;
-    const ts = Number(inst.timestamp) || 0;
-    if (ts >= bestTs) {
-      bestTs = ts;
-      best = inst;
-    }
-  }
-
-  return best;
-}
 
 export function isPortOpen(host, port, timeoutMs = PORT_PROBE_MS) {
   return new Promise((resolve) => {
@@ -73,7 +42,6 @@ export async function buildReachabilityDiagnostics(input) {
   const inst =
     findInstanceByPort(port) ??
     (projectPath ? findInstanceByProject(projectPath) : null);
-  const cache = readEditorHttpCache();
   const portOpen = await isPortOpen(host, port);
 
   let health = null;
@@ -91,7 +59,7 @@ export async function buildReachabilityDiagnostics(input) {
   const connectorState = inst?.[CONNECTOR_FIELD.ConnectorState] ?? null;
   const listenerRunning = inst?.[CONNECTOR_FIELD.ListenerRunning];
   const compileErrors = inst?.compile_errors === true;
-  const cacheStatus = cache?.port === port ? cache.status : null;
+  const supervisorPhase = inst?.supervisor_phase ?? null;
 
   let reason = 'unreachable';
   let hint =
@@ -102,7 +70,12 @@ export async function buildReachabilityDiagnostics(input) {
     hint =
       'Unity Editor HTTP is not listening. Open the project in Unity or check UNITY_CMD_PORT.';
   } else if (!health?.ok) {
-    if (cacheStatus === EDITOR_HTTP_CACHE_STATUS.Stopped || listenerRunning === false) {
+    if (
+      listenerRunning === false ||
+      supervisorPhase === 'Draining' ||
+      supervisorPhase === 'Starting' ||
+      inst?.http_status === 'stopped'
+    ) {
       reason = 'listener_restarting';
       hint =
         'Editor HTTP is restarting (domain reload / compile). Run: unity-cmd --profile ' +
@@ -143,9 +116,9 @@ export async function buildReachabilityDiagnostics(input) {
     listener_running: listenerRunning,
     commands_ready: health?.data?.[CONNECTOR_FIELD.CommandsReady],
     compile_errors: compileErrors,
-    cache_status: cacheStatus,
+    supervisor_phase: supervisorPhase,
     project_path: inst?.projectPath ?? null,
-    unity_pid: inst?.pid ?? cache?.pid ?? null,
+    unity_pid: inst?.pid ?? null,
     instance_generation: inst?.[CONNECTOR_FIELD.Generation] ?? null,
   };
 }

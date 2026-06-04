@@ -57,7 +57,7 @@ Editor assembly adds deferred command dispatch, completion policies, builtins, a
 |--------|------|----------|
 | GET | `/health` | `{ ok, host, connector_build, catalog_version, bind_mode }` |
 | POST | `/list` | `{ ok, catalog_version, commands[], alias_to_command }` — each command includes `params[]` help lines |
-| POST | `/command` | `200` sync or `202` + `command_id` |
+| POST | `/command` | `200` / `4xx` when connection closes (CONN-10 hold) |
 | GET | `/commands/{id}` | `{ status, result?, error? }` |
 
 | Host (`/health`) | When | Default port | Env override |
@@ -128,7 +128,7 @@ Profiler, screenshot, and `state` are **Editor** scope — use profile **`editor
 
 ### Play-mode HTTP
 
-- **Deferred commands supported:** `POST /command` may return `202`; `GET /commands/{id}` via `RuntimeJobStore`.
+- **CONN-10:** `PendingHttpResponses` holds POST until job completes (200/4xx). `GET /commands/{id}` is ledger/status read-only.
 - **Main thread:** Handlers run on the play loop via `PlayConnectorServer` `BridgeDriver.Update`; avoid blocking.
 - **Single-flight:** Concurrent `POST /command` on the same host returns `503` + `error=busy`.
 - **Screenshot in Play:** `screenshot` (`Scope = editor`) — use profile **`editor`** (:6547) even while playing; `view=game` captures Game view; `view=scene` needs Scene view.
@@ -162,8 +162,7 @@ unity-cmd --profile editor stop
 }
 ```
 
-Sync success: `200` + `{ ok: true, data: {...} }`.
-Command accepted: `202` + `{ command_id, request_id }`.
+Sync / long-running (CONN-10): `200` or `4xx` + `{ ok, data, command_id, request_id }` when the HTTP connection closes.
 
 ## Command discovery
 
@@ -236,7 +235,7 @@ CLI (`unity-cmd/src/client/connection.js`): profile file only — no port scanni
 
 **LAN:** `UNITY_CMD_BIND=lan` or `UNITY_CMD_LAN=1` on Unity; remote machine: `unity-cmd profile create phone --host <ip> --port <p> --host-kind editor_play`.
 
-**Compile / domain reload:** Editor HTTP stops and restarts (including brief gaps on enter/exit Play). Instance heartbeat stays `reloading` with `listener_running: false` until the new listener + catalog warmup complete; CLI `waitForConnectorReady` checks state via the unified readiness abstraction (instance file + `editor-http.json` + `/health` `session_id`/`generation` for editor, direct `/health` for play/player). CLI `allow_connection_retry` on deferred commands retries until timeout. Pending deferred jobs are flushed to `EditorJobLedger` before reload; `GET /commands/{id}` resolves from memory or ledger after restart (handlers are not redispatched).
+**Compile / domain reload:** Editor HTTP stops and restarts. CLI `wait` uses `instances/*.json` (SSOT) + `/health` for editor; play/player poll `/health` only. Jobs flush to `EditorJobLedger` before reload; `GET /commands/{id}` is read-only recovery (no redispatch). CONN-10 POST holds until completion when the listener is up.
 
 **HTTP (unified):** `ConnectorRequestDispatcher` — `/health`, `POST /list`, `GET /commands/{id}`, `POST /command` via `IMainThreadHttpScheduler` (Editor / play-mode bridges).
 

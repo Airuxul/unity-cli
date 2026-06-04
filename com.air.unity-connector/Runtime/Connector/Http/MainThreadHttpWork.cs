@@ -21,14 +21,18 @@ namespace Air.UnityConnector.Http
             public string Body;
             public string CommandId;
             public Action<int, Dictionary<string, object>> WriteJson;
+            public bool HoldCommandSlot;
         }
 
-        public static void Process(
+        /// <returns>True when the command HTTP slot may be released (false while holding connection for async completion).</returns>
+        public static bool Process(
             Item item,
             IInvokeHost host,
             Func<string, Dictionary<string, object>> getInvokeJobStatus,
-            Action onCatalogReady = null)
+            Action onCatalogReady = null,
+            Action<string, string, Action<int, Dictionary<string, object>>, Action> registerPendingHttp = null)
         {
+            var releaseCommandSlot = true;
             try
             {
                 switch (item.Kind)
@@ -59,7 +63,33 @@ namespace Air.UnityConnector.Http
                     default:
                         var request = CommandHttpHelper.ParseInvokeRequest(item.Body, host.HostName);
                         var post = host.HandleCommand(request);
-                        item.WriteJson(post.StatusCode, post.Body);
+                        if (post.HoldConnectionUntilComplete
+                            && registerPendingHttp != null
+                            && !string.IsNullOrEmpty(post.CommandId))
+                        {
+                            item.HoldCommandSlot = true;
+                            releaseCommandSlot = false;
+                            registerPendingHttp(
+                                post.CommandId,
+                                request.RequestId,
+                                item.WriteJson,
+                                () => { });
+                        }
+                        else if (post.HoldConnectionUntilComplete)
+                        {
+                            item.WriteJson(500, new Dictionary<string, object>
+                            {
+                                ["ok"] = false,
+                                ["error"] = "hold_without_pending_http",
+                                ["error_code"] = "INTERNAL_ERROR",
+                                ["command_id"] = post.CommandId,
+                            });
+                        }
+                        else
+                        {
+                            item.WriteJson(post.StatusCode, post.Body);
+                        }
+
                         break;
                 }
             }
@@ -71,6 +101,8 @@ namespace Air.UnityConnector.Http
                     ["error"] = ex.Message,
                 });
             }
+
+            return releaseCommandSlot && !item.HoldCommandSlot;
         }
     }
 }

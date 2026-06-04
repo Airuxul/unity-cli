@@ -17,9 +17,8 @@ import {
   RESOLVE_TARGET_HEALTH_TIMEOUT_MS,
   RESOLVE_TARGET_RETRY_INTERVAL_MS,
 } from '../constants.js';
-import { findInstanceByPort, readConnectorState } from './connector-readiness.js';
-import { readEditorHttpCache } from './editor-http-cache.js';
-import { CONNECTOR_STATE, EDITOR_HTTP_CACHE_STATUS } from '../constants.js';
+import { findInstanceForTarget, readConnectorState } from './connector-readiness.js';
+import { CONNECTOR_STATE } from '../constants.js';
 
 /** @param {string} [kind] */
 const VALID_HOST_KINDS = new Set(Object.values(HOST_KIND));
@@ -182,7 +181,12 @@ async function probeHealth(host, port, timeoutMs) {
  * Resolve target from a saved profile only.
  * @param {{ profile: string, timeoutMs?: number, verify?: boolean }} options
  */
-export async function resolveTarget({ profile, timeoutMs = DEFAULT_TIMEOUT_MS, verify = true } = {}) {
+export async function resolveTarget({
+  profile,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  verify = true,
+  projectPath = process.cwd(),
+} = {}) {
   if (!profile) return null;
 
   const saved = loadProfile(profile);
@@ -199,12 +203,18 @@ export async function resolveTarget({ profile, timeoutMs = DEFAULT_TIMEOUT_MS, v
   if (!verify) return base;
 
   const port = saved.port;
-  const inst = findInstanceByPort(port);
-  const cache = readEditorHttpCache();
+  const inst = findInstanceForTarget(
+    { host: saved.host, port, connector_host: expectedKind },
+    projectPath,
+  );
+  const phase = inst?.supervisor_phase;
   const likelyRestarting =
-    inst?.listener_running === false &&
-    (readConnectorState(inst) === CONNECTOR_STATE.Reloading ||
-      cache?.status === EDITOR_HTTP_CACHE_STATUS.Stopped);
+    inst &&
+    (inst.listener_running === false ||
+      readConnectorState(inst) === CONNECTOR_STATE.Reloading ||
+      phase === 'Draining' ||
+      phase === 'Starting' ||
+      inst.http_status === 'stopped');
   if (likelyRestarting) {
     const restartDeadline = Date.now() + timeoutMs;
     while (Date.now() < restartDeadline) {

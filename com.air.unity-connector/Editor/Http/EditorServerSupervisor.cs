@@ -1,5 +1,6 @@
 using System;
 using Air.UnityConnector.Host;
+using Air.UnityConnector;
 using UnityEditor;
 using UnityEngine;
 
@@ -25,8 +26,9 @@ namespace Air.UnityConnector.Server
 
         private const double WatchdogIntervalSeconds = 2.0;
         private const double WarningCooldownSeconds = 30.0;
-        private const double PlayTransitionSettleSeconds = 4.0;
+        private const double PlayTransitionSettleSeconds = 6.0;
         private const int EnsureRetriesPerBurst = 3;
+        private const string PlayTransitionUntilKey = "Air.UnityConnector.EditorHttp.PlayTransitionUntil";
 
         private readonly object _gate = new();
         private int _ensurePass;
@@ -37,6 +39,8 @@ namespace Air.UnityConnector.Server
         private double _lastWarningUtc;
         private double _startingSinceUtc;
         private const double StartingStuckSeconds = 15.0;
+        private const int DrainPortWaitMs = 3000;
+        private bool _startScheduled;
 
         public static EditorServerSupervisor Instance => _instance ??= new EditorServerSupervisor();
 
@@ -50,6 +54,18 @@ namespace Air.UnityConnector.Server
 
         public void RequestStart(int delayFrames = 1)
         {
+            lock (_gate)
+            {
+                if (_startScheduled && delayFrames > 0)
+                {
+                    EditorServerDiagnostics.Decision("RequestStart", "skip:already_scheduled");
+                    return;
+                }
+
+                if (delayFrames > 0)
+                    _startScheduled = true;
+            }
+
             if (delayFrames <= 0)
             {
                 EnqueueStart(immediate: true);
@@ -123,7 +139,9 @@ namespace Air.UnityConnector.Server
 
             _nextWatchdogUtc = now + WatchdogIntervalSeconds;
 
-            if (IsInBackoff() || IsHttpTransitionUnstable())
+            TryRecoverStuckDomainReload();
+
+            if (IsInBackoff() || ShouldDeferStart())
                 return;
 
             if (EditorConnectorServer.Instance.TryDescribeRunningCache(out var watchdogCacheReason))
@@ -199,14 +217,32 @@ namespace Air.UnityConnector.Server
                 return;
 
             supervisor._lastWarningUtc = now;
-            Debug.LogWarning(message);
+            ConnectorLog.LogWarning(message);
         }
 
         internal static void LogConnectorError(string message) =>
             EditorConnectorStartupLog.Record("LogConnectorError", message);
 
-        internal void MarkPlayTransition() =>
-            _transitionUntilUtc = EditorApplication.timeSinceStartup + PlayTransitionSettleSeconds;
+        internal void MarkPlayTransition()
+        {
+            var until = EditorApplication.timeSinceStartup + PlayTransitionSettleSeconds;
+            _transitionUntilUtc = until;
+            SessionState.SetFloat(PlayTransitionUntilKey, (float)until);
+        }
+
+        double PlayTransitionUntilUtc
+        {
+            get
+            {
+                var persisted = SessionState.GetFloat(PlayTransitionUntilKey, 0f);
+                return Math.Max(_transitionUntilUtc, persisted);
+            }
+        }
+
+        internal bool IsStartupFailureSuppressed() =>
+            IsHttpTransitionUnstable()
+            || EditorHttpSession.DomainReloading
+            || EditorApplication.isPlayingOrWillChangePlaymode;
 
         /// <summary>After play enter/exit: reconcile if already listening; otherwise defer start until transition settles.</summary>
         internal void OnPlayModeSettled()
@@ -237,7 +273,7 @@ namespace Air.UnityConnector.Server
         }
 
         internal bool IsHttpTransitionUnstable() =>
-            EditorApplication.timeSinceStartup < _transitionUntilUtc
+            EditorApplication.timeSinceStartup < PlayTransitionUntilUtc
             || EditorPlayState.IsCompiling
             || EditorPlayState.IsUpdating;
 
@@ -245,6 +281,9 @@ namespace Air.UnityConnector.Server
 
         private void EnqueueStart(bool immediate)
         {
+            lock (_gate)
+                _startScheduled = false;
+
             if (IsInBackoff())
             {
                 EditorServerDiagnostics.Decision("EnqueueStart", "skip:in_backoff");
@@ -327,15 +366,50 @@ namespace Air.UnityConnector.Server
             }
         }
 
-        private bool ShouldDeferStart() => IsHttpTransitionUnstable();
+        private bool ShouldDeferStart() =>
+            IsHttpTransitionUnstable() || EditorHttpSession.DomainReloading;
+
+        /// <summary>
+        /// If <see cref="EditorHttpSession.DomainReloading"/> stays true after compile/update settled
+        /// (delayCall recovery missed), clear the flag and schedule start so the watchdog is not blocked forever.
+        /// </summary>
+        internal void TryRecoverStuckDomainReload()
+        {
+            if (!EditorHttpSession.DomainReloading)
+                return;
+
+            if (EditorPlayState.IsCompiling || EditorPlayState.IsUpdating)
+                return;
+
+            if (EditorConnectorServer.Instance.IsListening && EditorHttpSession.IsCommandReady)
+            {
+                EditorHttpSession.SetDomainReloading(false, "TryRecoverStuckDomainReload:listener_ready");
+                return;
+            }
+
+            EditorServerDiagnostics.Decision(
+                "TryRecoverStuckDomainReload",
+                $"phase={Phase} listener={EditorConnectorServer.Instance.IsListening}");
+            EditorHttpSession.SetDomainReloading(false, "TryRecoverStuckDomainReload");
+            ResetTransientBackoff();
+            RequestStart(4);
+        }
 
         private void HandleStartFailure()
         {
-            if (IsHttpTransitionUnstable())
+            if (IsStartupFailureSuppressed())
             {
                 EditorServerDiagnostics.Trace("HandleStartFailure", "defer:no_log_during_transition");
                 SetPhase(EditorServerSupervisorPhase.Stopped, "HandleStartFailure:transitional");
-                RequestStart(5);
+                if (EditorHttpSession.DomainReloading)
+                {
+                    EditorServerDiagnostics.Decision(
+                        "HandleStartFailure",
+                        "defer:domain_reloading (watchdog/TryRecoverStuckDomainReload)");
+                    return;
+                }
+
+                RequestStart(6);
                 return;
             }
 
@@ -361,6 +435,13 @@ namespace Air.UnityConnector.Server
 
         private void RegisterFailureBurst()
         {
+            if (IsStartupFailureSuppressed())
+            {
+                EditorServerDiagnostics.Trace("RegisterFailureBurst", "defer:no_log_during_transition");
+                RequestStart(10);
+                return;
+            }
+
             _failureBurst++;
             var backoff = IsHttpTransitionUnstable()
                 ? Math.Min(3.0, 1.0 + _failureBurst)
@@ -389,7 +470,29 @@ namespace Air.UnityConnector.Server
         private void EnterDraining(string site, bool thenStart)
         {
             SetPhase(EditorServerSupervisorPhase.Draining, site);
+            EditorHttpSession.SetListenerActive(false, site);
+            EditorJobStateManager.FlushToLedger();
+            EditorInstanceFile.MarkReloading();
+
+            var port = EditorConnectorServer.Instance.Port;
             EditorServerLifecycle.PerformStop(site);
+
+            if (port > 0)
+            {
+                PortReachability.WaitUntilFree("127.0.0.1", port, DrainPortWaitMs);
+                if (PortReachability.IsPortOpen("127.0.0.1", port))
+                {
+                    var drainError = $"port {port} still in use after drain ({DrainPortWaitMs}ms)";
+                    EditorHttpLocalCache.MarkStopped(
+                        EditorHttpSession.SessionId,
+                        EditorHttpSession.Generation,
+                        port,
+                        EditorServerSupervisorPhase.Stopped,
+                        drainError);
+                    EditorServerDiagnostics.Trace("EnterDraining", "port_not_free_after_drain");
+                }
+            }
+
             EnterStopped(site + ":after_stop");
 
             if (!thenStart)
@@ -430,6 +533,9 @@ namespace Air.UnityConnector.Server
         private void EnterRunning(bool reconcileOnly)
         {
             SetPhase(EditorServerSupervisorPhase.Running, reconcileOnly ? "EnterRunning:reconcile" : "EnterRunning");
+            _transitionUntilUtc = 0;
+            SessionState.SetFloat(PlayTransitionUntilKey, 0f);
+
             if (reconcileOnly)
                 return;
 

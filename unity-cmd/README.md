@@ -80,7 +80,7 @@ Full examples: [../README.md#commands-per-instance](../README.md#commands-per-in
 | Variable | Description |
 |----------|-------------|
 | `UNITY_CMD_PROFILE` | Default profile name |
-| `UNITY_CMD_WORKSPACE` | Integration tests: Unity project root for file asserts |
+| `UNITY_CMD_WORKSPACE` | Integration: Unity project root (`Assets/` steps, `assertFile`, `wait` projectPath match) |
 | `UNITY_CMD_TIMEOUT_MS` | Default timeout (20000) |
 | `UNITY_CMD_TOKEN` | Optional HTTP auth token |
 

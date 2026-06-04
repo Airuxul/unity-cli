@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This monorepo connects a **Node CLI** (`unity-cmd`) to a **Unity UPM package** (`com.air.unity-connector`) over loopback HTTP. Unity owns the command catalog; the CLI resolves names, timeouts, and deferred command polling.
+This monorepo connects a **Node CLI** (`unity-cmd`) to a **Unity UPM package** (`com.air.unity-connector`) over loopback HTTP. Unity owns the command catalog; the CLI resolves names and timeouts. Commands complete in a single `POST /command` (CONN-10).
 
 ## Editor HTTP reliability
 
@@ -59,10 +59,8 @@ unity-cmd argv
                                  → POST /command
   → Unity ConnectorRequestDispatcher
        → IInvokeHost.HandleCommand
-            → InvokePipeline
-                 200 + data     sync
-                 202 + command_id   async
-  → CLI poll command status (GET /commands/{id}) if 202
+            → InvokePipeline + PendingHttpResponses (CONN-10)
+                 200 + data     sync (Editor + play; HTTP held until job done)
   → print JSON, exit 0/1
 ```
 
@@ -112,9 +110,11 @@ All three may be up at once (e.g. Editor + Play + local Dev build). Ports are fi
 
 **Dev player:** profile `package-play`. Release builds exclude `UnityCliConnector.Dev` — no player HTTP.
 
-### Deferred commands and catalog
+### Long-running commands and catalog
 
-- **Deferred command status** (`202` + `GET /commands/{id}`): All three HTTP hosts. Editor uses `EditorJobStateManager` (Editor completion policies). Play-mode hosts (`editor_play`, `player`) use `RuntimeJobStateManager` + `RuntimeJobStore` (PlayerPrefs per host).
+- **CONN-10:** `compile` / `play` / `stop` hold the POST connection; `PendingHttpResponses` completes on the main thread.
+- **GET /commands/{id}:** read-only job ledger (domain reload); not used to complete POST.
+- Editor: `EditorJobStateManager` + completion policies. Play: `RuntimeJobStateManager` + `RuntimeJobStore`.
 - **Sync commands** on play hosts run on the play main thread via `PlayConnectorServer` (`BridgeDriver`).
 - **Catalog** (`POST /list`): Same discovery on all hosts; player lists only commands from assemblies shipped in that build (Runtime builtins, not full Editor builtins).
 
@@ -163,11 +163,10 @@ See [../README.md#commands-per-instance](../README.md#commands-per-instance) for
 
 ## Editor readiness (domain reload)
 
-Before `POST /command` on the `editor` profile, `unity-cmd` waits until all of the following agree:
+Before `POST /command` on the `editor` profile, `unity-cmd` waits until:
 
-1. `~/.unity-cmd/instances/{hash}.json` — heartbeat `state`, `ready`, `listener_running`, advancing `timestamp`, `session_id`, `generation`
-2. `~/.unity-cmd/editor-http.json` — no stale `running` entry for another session on the same port
-3. `GET /health` — `ready`, `listener_running`, matching `session_id` / `generation`
+1. `~/.unity-cmd/instances/{hash}.json` (SSOT) — `connector_state`, `commands_ready`, `listener_running`, `supervisor_phase`, `compile_errors`, stable `generation`
+2. `GET /health` confirms `commands_ready`, `session_id`, `generation`
 
 `EditorConnectorBootstrap` stops the listener on `beforeAssemblyReload`, flushes deferred jobs to `EditorJobLedger`, restarts on `afterAssemblyReload`, and keeps instance heartbeat in `reloading` until catalog warmup completes. `GET /commands/{id}` can resolve pending jobs from the ledger after reload; handlers are not redispatched.
 

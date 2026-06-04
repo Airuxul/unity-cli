@@ -28,7 +28,7 @@
 | CONN-03 | P1 | `UNITY_CMD_TOKEN` hardening | Header validation + consistent failure JSON. |
 | CONN-04 | P1 | Post-reload job audit | Orphaned jobs / `EditorJobLedger` without redispatch. See `docs/EDITOR_SERVER_RELIABILITY.zh-CN.md` §4.3, §6 P1. |
 | CONN-07 | P0 | ~~Editor Server Supervisor~~ | **Done:** `EditorServerSupervisor` + thin `EditorConnectorBootstrap`. §8 integration tests still pending. |
-| CONN-08 | P2 | ~~editor-http schema v2~~ | **Partial:** `phase`, `last_error`, `project_path` on cache; `state` exposes `supervisor_phase`. CLI diagnostics alignment TBD. |
+| CONN-08 | P2 | ~~editor-http schema v2~~ | **Done (CLI):** `wait`/`resolveTarget` use instances SSOT; `supervisor_phase`/`http_status` on heartbeat; `editor-http.json` debug-only. |
 | CONN-05 | P2 | `ConnectorBuild.Id` pairing | Bump with CLI `MIN_CONNECTOR_BUILD`. |
 | CONN-06 | P2 | Release player HTTP strip | Confirm `DEVELOPMENT_BUILD` removes :6795 in Release. |
 
@@ -48,7 +48,7 @@
 
 - Profiles under `~/.unity-cmd/profiles/`
 - Catalog cache from `POST /list`; invalidate on `/health` versions
-- Editor readiness: instance heartbeat + `editor-http.json` + session/generation
+- Editor readiness: `instances/*.json` SSOT + `/health` confirm (see `EDITOR_SERVER_RELIABILITY.zh-CN.md`)
 - Integration scenarios: editor lifecycle, compile recovery, player runtime
 
 ### TODO
@@ -60,7 +60,7 @@
 | CMD-03 | P1 | CI integration matrix | `test:integration:all` when Editor + dev player available. |
 | CMD-04 | P1 | Build ID lockstep | `MIN_CONNECTOR_BUILD` ↔ `ConnectorBuild.Id` on protocol changes. |
 | CMD-05 | P2 | LAN profile docs | `UNITY_CMD_BIND=lan` + remote `editor_play` automation. |
-| CMD-06 | P2 | Unit tests (no Unity) | Catalog expiry, scope mismatch, poll budget timeout. |
+| CMD-06 | P2 | Unit tests (no Unity) | Catalog expiry, scope mismatch, `fetchCommandStatus`. |
 
 ### Do not assign here
 

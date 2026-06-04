@@ -27,12 +27,9 @@ namespace Air.UnityConnector.Tests
             };
 
             var post = host.HandleCommand(request);
-            Assert.AreEqual(202, post.StatusCode);
-            Assert.IsTrue(post.Body.TryGetValue("command_id", out var commandIdRaw));
-            var commandId = commandIdRaw as string;
-            Assert.IsNotNull(commandId);
-
-            var command = WaitForCommand(HostKind.EditorPlay, commandId, 7000);
+            Assert.IsTrue(post.HoldConnectionUntilComplete);
+            Assert.IsFalse(string.IsNullOrEmpty(post.CommandId));
+            var command = WaitForCommand(HostKind.EditorPlay, post.CommandId, 7000);
             Assert.IsNotNull(command);
             Assert.AreEqual(InvokeJobStatus.Succeeded, command.Status);
 
@@ -54,9 +51,9 @@ namespace Air.UnityConnector.Tests
                 MarkRunning();
                 _ = System.Threading.Tasks.Task.Run(() =>
                 {
-                    Debug.Log("[unity-connector][test] runtime command started");
+                    ConnectorLog.Log("[unity-connector][test] runtime command started");
                     Thread.Sleep(5000);
-                    Debug.Log("[unity-connector][test] runtime command finished");
+                    ConnectorLog.Log("[unity-connector][test] runtime command finished");
                     CompleteSuccess(InvokeResult.Ok("runtime command finished"));
                 });
             }

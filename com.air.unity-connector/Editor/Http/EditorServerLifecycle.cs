@@ -46,7 +46,7 @@ namespace Air.UnityConnector.Server
             EditorInstanceFile.PublishSnapshot();
 
             if (wasRunning)
-                Debug.Log($"[unity-connector] Editor HTTP server stopped (port {port}).");
+                ConnectorLog.Log($"[unity-connector] Editor HTTP server stopped (port {port}).");
         }
 
         internal static EditorHttpLocalCache.StartupAction ApplyCacheOnDomainStart()
@@ -112,27 +112,48 @@ namespace Air.UnityConnector.Server
 
             if (prepare == EditorHttpLocalCache.PrepareResult.PortOwnedByOtherProcess)
             {
-                var portMsg = ConnectorHttpLifecycle.FormatPortInUseMessage(
-                    "Editor HTTP server",
-                    "127.0.0.1",
-                    port,
-                    "another Unity instance or stale listener");
-                if (EditorServerSupervisor.Instance.IsHttpTransitionUnstable())
-                    EditorServerSupervisor.LogThrottled(portMsg);
-                else
-                    EditorServerSupervisor.LogConnectorError(portMsg);
-                return StartAttemptResult.ForeignPort;
+                EditorPlayModePortCleanup.StopPlayerHttpIfNeeded("TryStartListening(port_busy)");
+                EditorHttpLocalCache.WaitForPortAvailable(port, 1500);
+                prepare = EditorHttpLocalCache.PrepareForStart(
+                    EditorHttpSession.SessionId,
+                    EditorHttpSession.Generation,
+                    port);
+                if (prepare == EditorHttpLocalCache.PrepareResult.PortOwnedByOtherProcess)
+                {
+                    var portMsg = ConnectorHttpLifecycle.FormatPortInUseMessage(
+                        "Editor HTTP server",
+                        "127.0.0.1",
+                        port,
+                        "another Unity instance or stale listener");
+                    if (EditorServerSupervisor.Instance.IsHttpTransitionUnstable())
+                        EditorServerSupervisor.LogThrottled(portMsg);
+                    else
+                        EditorServerSupervisor.LogConnectorError(portMsg);
+                    return StartAttemptResult.ForeignPort;
+                }
             }
 
             EditorServerDiagnostics.Trace("TryStartListening", "path=prebind_stop");
             PerformStop("TryStartListening(prebind)");
 
             // Skip TCP pre-check after local Stop: TIME_WAIT can look "open" without a listener.
-            if (!server.TryStart(requirePortFree: false))
+            var bound = false;
+            var boundPort = port;
+            foreach (var candidate in HostNetwork.ResolveEditorPortCandidates())
+            {
+                if (server.TryStartOnPort(candidate, requirePortFree: false))
+                {
+                    bound = true;
+                    boundPort = candidate;
+                    break;
+                }
+            }
+
+            if (!bound)
             {
                 EditorConnectorStartupLog.Record(
                     "TryStartListening",
-                    "TryStart returned false (see prior LogError from HttpListener bind)");
+                    "TryStart returned false for all port candidates (see prior LogError from HttpListener bind)");
                 EditorHttpLocalCache.MarkStopped(
                     EditorHttpSession.SessionId,
                     EditorHttpSession.Generation,
@@ -140,6 +161,8 @@ namespace Air.UnityConnector.Server
                     EditorServerSupervisorPhase.Stopped);
                 return StartAttemptResult.Failed;
             }
+
+            port = boundPort;
 
             if (!server.TryProbeHealth(HealthTimeoutMs, HealthProbeAttempts, out var healthError))
             {
@@ -171,7 +194,7 @@ namespace Air.UnityConnector.Server
                 server.ListenerId,
                 EditorServerSupervisorPhase.Running);
 
-            Debug.Log(
+            ConnectorLog.Log(
                 $"[unity-connector] Editor HTTP server started (port {port}, host editor, build {ConnectorBuild.Id}).");
             EditorServerDiagnostics.Trace("TryStartListening", "path=started_fresh");
             EditorConnectorStartupLog.Clear();
@@ -248,7 +271,7 @@ namespace Air.UnityConnector.Server
                 LastSite = site ?? "";
                 LastMessage = message;
                 LastUtc = DateTime.UtcNow.ToString("o");
-                Debug.LogError($"{Prefix} {LastSite}: {LastMessage}");
+                ConnectorLog.LogError($"{Prefix} {LastSite}: {LastMessage}");
                 WriteDiskUnsafe();
             }
         }

@@ -10,11 +10,10 @@ import path from 'node:path';
  * - Runtime/Connector/Http/ConnectorMainThreadScheduler.cs (HTTP errors)
  */
 
-export const MIN_CONNECTOR_BUILD = 39;
+export const MIN_CONNECTOR_BUILD = 40;
 
 // --- Timeouts (ms) ---
 export const DEFAULT_TIMEOUT_MS = 20_000;
-export const POST_COMMAND_CAP_MS = 5_000;
 export const HEALTH_CONFIRM_CAP_MS = 3_000;
 export const HEALTH_CONFIRM_READY_CAP_MS = 5_000;
 export const POLL_INTERVAL_MS = 200;
@@ -118,15 +117,7 @@ export const UNITY_CMD_HOME = path.join(os.homedir(), '.unity-cmd');
 export const INSTANCES_DIR = path.join(UNITY_CMD_HOME, 'instances');
 export const PROFILES_DIR = path.join(UNITY_CMD_HOME, 'profiles');
 export const CACHE_DIR = path.join(UNITY_CMD_HOME, 'cache');
-export const EDITOR_HTTP_CACHE_PATH = path.join(UNITY_CMD_HOME, 'editor-http.json');
-
 export const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
-
-/** Matches Unity `EditorHttpLocalCache` status field. */
-export const EDITOR_HTTP_CACHE_STATUS = {
-  Running: 'running',
-  Stopped: 'stopped',
-};
 
 export const DEFAULT_PORT_BY_HOST_KIND = {
   [HOST_KIND.Editor]: DEFAULT_EDITOR_PORT,

@@ -11,7 +11,16 @@ namespace Air.UnityConnector.Http
         {
             public int StatusCode;
             public Dictionary<string, object> Body;
+            /// <summary>Keep HTTP connection open until job completes (CONN-10).</summary>
+            public bool HoldConnectionUntilComplete;
+            public string CommandId;
         }
+
+        public static bool HoldsConnectionUntilComplete(string completionKind) =>
+            completionKind is InvokeCompletionCatalog.CompletionCompilation
+                or InvokeCompletionCatalog.CompletionEnterPlay
+                or InvokeCompletionCatalog.CompletionExitPlay
+                or InvokeCompletionCatalog.CompletionDeferred;
 
         public static PostResult HandleUnifiedPost(
             InvokeRequest request,
@@ -27,44 +36,50 @@ namespace Air.UnityConnector.Http
                 execute(context, request.Parameters);
 
                 if (context != null && context.IsCompleted)
-                {
-                    var ok = string.IsNullOrEmpty(context.CompletedError);
-                    var (data, code, message) = UnwrapResult(context.CompletedResult);
-                    var body = new Dictionary<string, object>
-                    {
-                        ["ok"] = ok,
-                        ["data"] = data,
-                        ["error"] = context.CompletedError,
-                        ["request_id"] = request.RequestId,
-                        ["command_id"] = commandId,
-                    };
-                    if (!string.IsNullOrWhiteSpace(code))
-                        body["code"] = code;
-                    if (!string.IsNullOrWhiteSpace(message))
-                        body["message"] = message;
+                    return BuildCompletedResult(context, request.RequestId, commandId);
 
+                if (HoldsConnectionUntilComplete(completion))
+                {
                     return new PostResult
                     {
-                        StatusCode = ok ? 200 : 400,
-                        Body = body,
+                        HoldConnectionUntilComplete = true,
+                        CommandId = commandId,
                     };
                 }
 
-                return new PostResult
-                {
-                    StatusCode = 202,
-                    Body = new Dictionary<string, object>
-                    {
-                        ["ok"] = true,
-                        ["command_id"] = commandId,
-                        ["request_id"] = request.RequestId,
-                    },
-                };
+                return BuildFailure(
+                    "command did not complete synchronously",
+                    request.RequestId,
+                    commandId);
             }
             catch (Exception ex)
             {
                 return BuildFailure(ex.Message, request.RequestId, null);
             }
+        }
+
+        static PostResult BuildCompletedResult(InvokeContext context, string requestId, string commandId)
+        {
+            var ok = string.IsNullOrEmpty(context.CompletedError);
+            var (data, code, message) = UnwrapResult(context.CompletedResult);
+            var body = new Dictionary<string, object>
+            {
+                ["ok"] = ok,
+                ["data"] = data,
+                ["error"] = context.CompletedError,
+                ["request_id"] = requestId,
+                ["command_id"] = commandId,
+            };
+            if (!string.IsNullOrWhiteSpace(code))
+                body["code"] = code;
+            if (!string.IsNullOrWhiteSpace(message))
+                body["message"] = message;
+
+            return new PostResult
+            {
+                StatusCode = ok ? 200 : 400,
+                Body = body,
+            };
         }
 
         private static PostResult BuildFailure(string error, string requestId, string commandId)

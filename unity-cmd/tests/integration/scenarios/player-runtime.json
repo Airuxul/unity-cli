@@ -6,7 +6,7 @@
       "name": "01_ping_player",
       "command": "ping",
       "expect": { "ok": true },
-      "expectConnectorBuild": 39
+      "expectConnectorBuild": 40
     },
     {
       "name": "02_list_catalog_player",

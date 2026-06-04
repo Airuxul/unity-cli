@@ -95,6 +95,35 @@ public sealed class MyToolCommand : CliCommand<MyToolParams>
 
 无参数命令：继承 `CliCommand` 并实现 `Run()`。`[CliParam]` 不写 key 时，CLI 参数名为属性 camelCase（`ToolName` → `toolName`）。
 
+## Console 日志开关
+
+包内 `[unity-connector]` 诊断与生命周期日志经 `ConnectorLog` 输出，**默认开启**。关闭：`ConnectorLog.Enabled = false`，或 Editor 菜单 **Air → Unity Connector → Console Logs**（会写入 EditorPrefs）。`~/.unity-cmd/editor-server-trace.log` 与 CLI 的 `log` / `warn` / `error` 命令不受此开关影响。
+
+## 故障：Editor HTTP「坏了」/ `listener_restarting` / 端口占用
+
+### 根本原因（常见）
+
+| 现象 | 原因 |
+|------|------|
+| `unity-cmd ping` → `listener_restarting` / `NO_INSTANCE` | **编译/domain reload 故意停服**：`OnBeforeAssemblyReload` → `RequestDrain` 关闭 :6547；reload 完成前 CLI 会失败，属预期。 |
+| 日志里几十条 `HandleStartFailure:transitional` + `DomainReloading=True` | **旧版缺陷**：reload 期间 watchdog 每帧重试 `EnterStarting`，拉长停服窗口；已改为 reload 期间 **不重试**，等 `OnCompilationFinished` / reload settled 再启。 |
+| `cannot start: port already in use`（6547） | 本机 **第二个 Unity** 占同一端口，或 **僵尸 HttpListener**（上次 Editor 未释放）。 |
+| 6547 与 6795 同时异常 | 旧逻辑在 Editor Play 误启 **:6795 Player HTTP** 且未释放，干扰 Supervisor 重启；现已在 **每次 Play 切换 / 编译前 / 域重载前** 强制 `PlayerHttpHost.Stop()`。 |
+| 切场景再 Play 后 CLI 全挂 | 应用 **Stop Play** 后立刻发命令；应等 **EnteredEditMode** 且 `ping` 为 `commands_ready: true`。 |
+
+### 自动化应用哪个 profile
+
+- 编辑与 **Editor 内 Play**：**`editor`（:6547）**；Play 内 runtime 命令用 **`editor_play`（:6794）**。
+- **不要用 `player`（:6795）** 打正在 Editor 里运行的游戏——6795 仅 Development Build 包体。
+
+### 恢复步骤
+
+1. **停止 Play**，等待 2～5 秒。
+2. Unity 菜单：**GameDemo → Restart Unity Connector (Editor HTTP)**，或 CLI：`unity-cmd --profile editor connector.restart`。
+3. 等待就绪：`unity-cmd --profile editor wait --timeout=120000`
+4. 仍失败：关掉 **多余 Unity 窗口**；Windows：`netstat -ano | findstr "6547"` / `findstr "6795"`，结束占用 PID（勿误杀系统进程）。
+5. 最后手段：重启当前 Unity Editor。
+
 ## EditMode 测试（可选）
 
 ```bash

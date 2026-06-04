@@ -25,8 +25,21 @@ namespace Air.UnityConnector.Host
             return HostBindMode.Loopback;
         }
 
+        public const int EditorPortScanAttempts = 10;
+
         public static int ResolveEditorPort() =>
             ResolvePortFromEnv(HostPorts.EnvEditorPort, HostPorts.DefaultEditor);
+
+        /// <summary>Base port from env/default, then consecutive ports (avoids bind failures after reload).</summary>
+        public static int[] ResolveEditorPortCandidates()
+        {
+            var start = ResolveEditorPort();
+            var count = Math.Min(EditorPortScanAttempts, Math.Max(1, 65535 - start));
+            var ports = new int[count];
+            for (var i = 0; i < count; i++)
+                ports[i] = start + i;
+            return ports;
+        }
 
         public static int ResolveEditorPlayPort() =>
             ResolvePortFromEnv(HostPorts.EnvEditorPlayPort, HostPorts.DefaultEditorPlay);

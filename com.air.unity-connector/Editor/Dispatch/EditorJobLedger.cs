@@ -42,7 +42,7 @@ namespace Air.UnityConnector
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[unity-connector] EditorJobLedger.Persist failed: {ex.Message}");
+                ConnectorLog.LogWarning($"[unity-connector] EditorJobLedger.Persist failed: {ex.Message}");
             }
         }
 
@@ -98,7 +98,7 @@ namespace Air.UnityConnector
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[unity-connector] EditorJobLedger.MergePendingInto failed: {ex.Message}");
+                ConnectorLog.LogWarning($"[unity-connector] EditorJobLedger.MergePendingInto failed: {ex.Message}");
             }
         }
 
@@ -119,7 +119,7 @@ namespace Air.UnityConnector
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[unity-connector] EditorJobLedger.PurgeCorruptFiles failed: {ex.Message}");
+                ConnectorLog.LogWarning($"[unity-connector] EditorJobLedger.PurgeCorruptFiles failed: {ex.Message}");
             }
         }
 

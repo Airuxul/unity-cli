@@ -66,7 +66,7 @@ unity-cmd --profile editor help
 | 变量 | 说明 |
 |------|------|
 | `UNITY_CMD_PROFILE` | 默认 profile 名 |
-| `UNITY_CMD_WORKSPACE` | 集成测试：工程根目录（文件断言） |
+| `UNITY_CMD_WORKSPACE` | 集成测试：工程根（`Assets/` 步骤、`assertFile`、`wait` 与实例 `projectPath` 对齐） |
 | `UNITY_CMD_TIMEOUT_MS` | 默认超时（20000） |
 
 ## 测试

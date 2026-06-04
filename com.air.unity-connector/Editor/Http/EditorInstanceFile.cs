@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Air.UnityConnector.Host;
+using Air.UnityConnector.Server;
 using Air.UnityConnector.State;
 using Air.UnityGameCore.Runtime.Serialization;
 using UnityEditor;
@@ -139,6 +140,8 @@ namespace Air.UnityConnector
                 timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 listener_running = EditorConnectorServer.IsListeningStatic,
                 compile_errors = EditorUtility.scriptCompilationFailed,
+                supervisor_phase = EditorServerSupervisor.Instance.Phase.ToString(),
+                http_status = EditorConnectorServer.IsListeningStatic ? "running" : "stopped",
             };
 
             try
@@ -186,6 +189,8 @@ namespace Air.UnityConnector
             public long timestamp;
             public bool listener_running;
             public bool compile_errors;
+            public string supervisor_phase;
+            public string http_status;
         }
     }
 }

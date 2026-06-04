@@ -52,7 +52,7 @@ namespace Air.UnityConnector
                 _lastUtc = now;
             }
 
-            Debug.Log($"{Prefix} {line}");
+            ConnectorLog.Log($"{Prefix} {line}");
             AppendFile(line);
         }
 

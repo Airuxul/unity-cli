@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Air.UnityConnector;
 using Air.UnityConnector.Params;
 using UnityEditor;
 using UnityEngine;
@@ -21,7 +22,7 @@ namespace Air.UnityConnector.Editor.Services
             if (paths.Length == 0)
             {
                 AssetDatabase.ForceReserializeAssets();
-                Debug.Log("[unity-connector] ForceReserializeAssets: entire project");
+                ConnectorLog.Log("[unity-connector] ForceReserializeAssets: entire project");
                 return new Dictionary<string, object>
                 {
                     ["scope"] = "project",
@@ -30,7 +31,7 @@ namespace Air.UnityConnector.Editor.Services
             }
 
             AssetDatabase.ForceReserializeAssets(paths);
-            Debug.Log($"[unity-connector] ForceReserializeAssets: {string.Join(", ", paths)}");
+            ConnectorLog.Log($"[unity-connector] ForceReserializeAssets: {string.Join(", ", paths)}");
             return new Dictionary<string, object>
             {
                 ["scope"] = "paths",

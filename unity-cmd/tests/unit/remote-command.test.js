@@ -114,7 +114,7 @@ test('unreachable target → exitCode 1, error_code NO_INSTANCE', async () => {
 
 // ---------- CONNECTOR_OUTDATED -----------------------------------------------
 
-test('outdated connector_build → exitCode 1, error_code CONNECTOR_OUTDATED', async () => {
+test('outdated connector_build → CONNECTOR_OUTDATED', async () => {
   const deps = happyDeps({
     resolveTarget: async () => ({
       ...TARGET,

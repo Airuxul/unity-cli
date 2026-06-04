@@ -6,6 +6,8 @@ using UnityEditor;
 using UnityEngine;
 using Air.UnityConnector.Invoke;
 using Air.UnityConnector;
+using Air.UnityConnector.Host;
+using Air.UnityConnector.Http;
 
 namespace Air.UnityConnector
 {
@@ -110,7 +112,6 @@ namespace Air.UnityConnector
             EditorJobLedger.MergePendingInto(_commands);
             OrphanJobsAfterDomainReload();
             Save();
-            TryCompleteIdleCompilationJobs();
         }
 
         /// <summary>P1: pending/running jobs without a completion policy cannot resume after reload.</summary>
@@ -140,38 +141,6 @@ namespace Air.UnityConnector
             }
         }
 
-        /// <summary>
-        /// After domain reload, compilation may have finished while static state was reset.
-        /// </summary>
-        static void TryCompleteIdleCompilationJobs()
-        {
-            if (EditorApplication.isCompiling)
-                return;
-
-            var state = EditorStateProvider.Capture();
-            if (!Policies.TryGetValue(InvokeCompletionCatalog.CompletionCompilation, out var policy))
-                return;
-
-            foreach (var command in _commands.Values.ToList())
-            {
-                if (JobStateCore.ShouldSkip(command))
-                    continue;
-                if (!string.Equals(
-                        command.CompletionKind,
-                        InvokeCompletionCatalog.CompletionCompilation,
-                        StringComparison.Ordinal))
-                    continue;
-
-                if (!policy.TryComplete(command, state, out var result, out var error))
-                    continue;
-
-                if (!string.IsNullOrEmpty(error))
-                    Fail(command.Id, error);
-                else
-                    Succeed(command.Id, result);
-            }
-        }
-
         private static void Tick()
         {
             if (_commands.Count == 0)
@@ -189,6 +158,8 @@ namespace Air.UnityConnector
                         InvokeCompletionCatalog.CompletionDeferred,
                         StringComparison.Ordinal),
                 serializeResultJson: false);
+
+            PendingHttpResponses.TryCompleteAll(HostKind.Editor, Get);
         }
 
         private static JobStateCore.TryCompleteJob ResolveTryComplete(
@@ -234,7 +205,7 @@ namespace Air.UnityConnector
         {
             if (!MainThread.IsCurrent)
             {
-                Debug.LogWarning("[unity-connector] EditorJobStateManager.Save skipped (not main thread).");
+                ConnectorLog.LogWarning("[unity-connector] EditorJobStateManager.Save skipped (not main thread).");
                 return;
             }
 

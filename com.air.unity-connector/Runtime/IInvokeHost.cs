@@ -3,7 +3,7 @@ using Air.UnityConnector.Http;
 
 namespace Air.UnityConnector
 {
-    /// <summary>Host-specific command dispatch (sync 200 vs deferred 202 pipeline).</summary>
+    /// <summary>Host-specific command dispatch (CONN-10: POST completes on held connection).</summary>
     public interface IInvokeHost
     {
         string HostName { get; }

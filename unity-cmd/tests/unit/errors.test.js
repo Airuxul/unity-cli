@@ -9,14 +9,14 @@ test('cliError includes code and hint', () => {
   assert.equal(e.hint, 'open unity');
 });
 
-test('enrichFailure adds deferred timeout hint', () => {
-  const e = enrichFailure({ ok: false, error: 'command_status_poll_timeout', timedOut: true }, { deferred: true });
-  assert.equal(e.error_code, 'COMMAND_STATUS_TIMEOUT');
-  assert.match(e.hint, /console/i);
+test('enrichFailure maps HTTP 202 to COMMAND_FAILED', () => {
+  const e = enrichFailure({ ok: false, status: 202, error: 'connector_returned_202' });
+  assert.equal(e.error_code, 'COMMAND_FAILED');
+  assert.match(e.hint, /CONN-10|POST/i);
 });
 
 test('enrichThrown maps connection refused', () => {
   const e = enrichThrown(new TypeError('fetch failed'), { command: 'ping' });
   assert.equal(e.error_code, 'CONNECTION_FAILED');
-  assert.match(e.hint, /ping/i);
+  assert.match(e.hint, /wait/i);
 });

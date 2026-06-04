@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { ping } from '../../src/client/command.js';
 import { loadProfile, hostKindMatches } from '../../src/client/connection.js';
 import { HOST_KIND, INTEGRATION_PLAYER_PROBE_MS, PROFILE_BY_HOST_KIND } from '../../src/constants.js';
@@ -10,9 +12,62 @@ const RUNNER = fileURLToPath(new URL('./runner.mjs', import.meta.url));
 async function main() {
   await runScenario('editor-lifecycle', process.env.UNITY_CMD_PROFILE ?? 'editor');
 
+  if (process.env.UNITY_CMD_INTEGRATION_STRESS === '1') {
+    await runScenario('editor-reliability-stress', process.env.UNITY_CMD_PROFILE ?? 'editor');
+  } else {
+    console.log(
+      '[integration] skip editor-reliability-stress: set UNITY_CMD_INTEGRATION_STRESS=1 to run',
+    );
+  }
+
+  await maybeRunCompileRecompileScenario();
+
+  await maybeRunGameDemoScenario();
+
   const playerProfileName =
     process.env.UNITY_CMD_PLAYER_PROFILE ?? PROFILE_BY_HOST_KIND[HOST_KIND.Player];
   await maybeRunPlayerScenario(playerProfileName);
+}
+
+async function maybeRunCompileRecompileScenario() {
+  const workspace = process.env.UNITY_CMD_WORKSPACE?.trim();
+  if (!workspace) {
+    console.log(
+      '[integration] skip compile-recompile-cycle: set UNITY_CMD_WORKSPACE to Unity project root',
+    );
+    return;
+  }
+
+  const assetsDir = path.join(workspace, 'Assets');
+  if (!fs.existsSync(assetsDir)) {
+    console.log(
+      '[integration] skip compile-recompile-cycle: missing Assets/ under UNITY_CMD_WORKSPACE',
+    );
+    return;
+  }
+
+  await runScenario('compile-recompile-cycle', process.env.UNITY_CMD_PROFILE ?? 'editor');
+}
+
+async function maybeRunGameDemoScenario() {
+  const workspace = process.env.UNITY_CMD_WORKSPACE?.trim();
+  if (!workspace) {
+    console.log(
+      '[integration] skip gamedemo-scene-switch-play: set UNITY_CMD_WORKSPACE to GameDemo project root',
+    );
+    return;
+  }
+
+  const statUp = path.join(workspace, 'Assets/Scenes/StatUp.unity');
+  const boot = path.join(workspace, 'Assets/Scenes/Boot.unity');
+  if (!fs.existsSync(statUp) || !fs.existsSync(boot)) {
+    console.log(
+      '[integration] skip gamedemo-scene-switch-play: missing Assets/Scenes/StatUp.unity or Boot.unity',
+    );
+    return;
+  }
+
+  await runScenario('gamedemo-scene-switch-play', process.env.UNITY_CMD_PROFILE ?? 'editor');
 }
 
 async function maybeRunPlayerScenario(playerProfileName) {

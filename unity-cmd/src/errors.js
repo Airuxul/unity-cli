@@ -1,4 +1,4 @@
-/** @typedef {'NO_INSTANCE' | 'NO_PROFILE' | 'CONNECTOR_OUTDATED' | 'CONNECTION_FAILED' | 'CATALOG_FETCH_FAILED' | 'SCOPE_MISMATCH' | 'COMMAND_FAILED' | 'DEFERRED_COMMAND_FAILED' | 'COMMAND_STATUS_TIMEOUT' | 'COMMAND_NOT_FOUND' | 'HTTP_TIMEOUT' | 'UNKNOWN'} ErrorCode */
+/** @typedef {'NO_INSTANCE' | 'NO_PROFILE' | 'CONNECTOR_OUTDATED' | 'CONNECTION_FAILED' | 'CATALOG_FETCH_FAILED' | 'SCOPE_MISMATCH' | 'COMMAND_FAILED' | 'COMMAND_NOT_FOUND' | 'HTTP_TIMEOUT' | 'UNKNOWN'} ErrorCode */
 
 /**
  * @param {string} message
@@ -18,7 +18,7 @@ export function cliError(message, errorCode, hint, extra = {}) {
 
 /**
  * @param {Record<string, unknown>} res
- * @param {{ command?: string, status?: number }} [context]
+ * @param {{ command?: string, status?: number, hint?: string }} [context]
  */
 export function enrichFailure(res, context = {}) {
   if (res?.ok !== false && res?.ok !== undefined && res.ok) return res;
@@ -30,28 +30,29 @@ export function enrichFailure(res, context = {}) {
   let error_code = 'COMMAND_FAILED';
   let hint = null;
 
-  if (error.includes('command_status_poll_timeout') || res?.timedOut) {
-    error_code = 'COMMAND_STATUS_TIMEOUT';
-    hint = 'Increase --timeout or check Unity Console (--profile editor console).';
+  if (error === 'connector_returned_202' || status === 202) {
+    error_code = 'COMMAND_FAILED';
+    hint =
+      context.hint ??
+      'Connector must complete commands in one POST (CONN-10). Recompile com.air.unity-connector.';
   } else if (error === 'command_not_found') {
     error_code = 'COMMAND_NOT_FOUND';
     hint =
-      'Command status not found. After a domain reload, retry with allow_connection_retry or re-issue the command.';
-  } else if (error === 'failed' || error === 'orphaned' || context.deferred) {
-    error_code = 'DEFERRED_COMMAND_FAILED';
-    hint = 'Run unity-cmd console --type error,warning to inspect Editor errors.';
-  } else if (status === 404) {
+      'Command not in ledger. Run unity-cmd wait after domain reload, then re-issue the command.';
+  } else if (error === 'failed' || error === 'orphaned') {
     error_code = 'COMMAND_FAILED';
+    hint = 'Run unity-cmd --profile editor console --type error,warning';
+  } else if (status === 404) {
     hint = 'Run unity-cmd --profile <name> list --refresh-catalog';
   } else if (status >= 500) {
-    hint = 'Check Unity Editor console and try --profile editor refresh --compile true';
+    hint = 'Check Unity Editor console and try unity-cmd --profile editor wait';
   }
 
   return {
     ...res,
     error,
     error_code,
-    hint,
+    hint: context.hint ?? hint,
   };
 }
 
@@ -70,7 +71,7 @@ export function enrichThrown(err, context = {}) {
   } else if (message.includes('fetch failed') || message.includes('ECONNREFUSED')) {
     error_code = 'CONNECTION_FAILED';
     hint =
-      'Endpoint unreachable. Open Unity, verify profile (unity-cmd profile list), then --profile <name> ping.';
+      'Endpoint unreachable. Run unity-cmd wait, then ping. Re-issue the command after Editor is ready.';
   } else if (message.includes('command catalog')) {
     error_code = 'CATALOG_FETCH_FAILED';
     hint = 'Try --profile <name> ping then list --refresh-catalog';

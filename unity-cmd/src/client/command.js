@@ -1,5 +1,4 @@
 import { requestJson } from './http.js';
-import { pollCommandStatus } from './command-status.js';
 import { resolveTimeoutMs } from '../runtime.js';
 import { enrichFailure } from '../errors.js';
 import { sleep } from './connection.js';
@@ -7,7 +6,6 @@ import {
   CONNECTOR_HTTP_ERROR,
   PING_MAX_ATTEMPTS,
   PING_RETRY_INTERVAL_MS,
-  POST_COMMAND_CAP_MS,
   RETRYABLE_POST_ERRORS,
   SEND_COMMAND_RETRY_INTERVAL_MS,
 } from '../constants.js';
@@ -27,7 +25,7 @@ export async function sendCommand(target, command, parameters = {}, options = {}
   let lastResult = null;
 
   while (Date.now() < deadline) {
-    const postTimeoutMs = Math.min(POST_COMMAND_CAP_MS, Math.max(500, deadline - Date.now()));
+    const postTimeoutMs = Math.max(500, deadline - Date.now());
 
     let status;
     let data;
@@ -44,22 +42,21 @@ export async function sendCommand(target, command, parameters = {}, options = {}
       continue;
     }
 
-    const commandId = data?.command_id;
-    if (status === 202 && commandId) {
-      const pollTimeoutMs = Math.max(0, deadline - Date.now());
-      const polled = await pollCommandStatus(baseUrl, commandId, pollTimeoutMs, {
-        allowConnectionRetry: retry,
-      });
-      const result = {
-        ok: polled.ok,
-        status: polled.ok ? 200 : 500,
-        data: polled.data?.result ?? polled.data,
-        error: polled.error,
-        command_id: commandId,
-        request_id: data.request_id,
-        timedOut: polled.timedOut,
-      };
-      return polled.ok ? result : enrichFailure(result, { deferred: true, status: result.status });
+    if (status === 202) {
+      return enrichFailure(
+        {
+          ok: false,
+          status: 202,
+          error: 'connector_returned_202',
+          command_id: data?.command_id,
+          request_id: data?.request_id,
+        },
+        {
+          command: options.command,
+          hint:
+            'HTTP 202 is not supported. Recompile com.air.unity-connector and use unity-cmd wait before commands.',
+        },
+      );
     }
 
     const result = {
@@ -68,6 +65,7 @@ export async function sendCommand(target, command, parameters = {}, options = {}
       data: data?.data,
       error: data?.error,
       request_id: data?.request_id,
+      command_id: data?.command_id,
     };
     lastResult = result;
 
@@ -78,6 +76,13 @@ export async function sendCommand(target, command, parameters = {}, options = {}
     ) {
       await sleep(SEND_COMMAND_RETRY_INTERVAL_MS);
       continue;
+    }
+
+    if (!result.ok && result.error === 'hold_without_pending_http') {
+      return enrichFailure(result, {
+        command: options.command,
+        hint: 'Connector HTTP hold is misconfigured. Recompile com.air.unity-connector.',
+      });
     }
 
     return result.ok ? result : enrichFailure(result, { status, command: options.command });
@@ -135,5 +140,33 @@ export async function fetchCatalog(target, options = {}) {
     connector_build: data?.connector_build ?? null,
     commands: data?.commands ?? [],
     alias_to_command: data?.alias_to_command ?? {},
+  };
+}
+
+/** Single GET /commands/{id} (read-only ledger); not used for POST completion. */
+export async function fetchCommandStatus(target, commandId, options = {}) {
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
+  const baseUrl = `http://${target.host}:${target.port}`;
+  const { status, data } = await requestJson(`${baseUrl}/commands/${commandId}`, {
+    timeoutMs,
+    retryOnDisconnect: options.retryOnDisconnect !== false,
+  });
+  if (status === 404) {
+    return {
+      ok: false,
+      status: 404,
+      error: 'command_not_found',
+      error_code: 'COMMAND_NOT_FOUND',
+      data,
+    };
+  }
+  const terminal = data?.status === 'succeeded';
+  const failed = data?.status === 'failed' || data?.status === 'orphaned';
+  return {
+    ok: terminal,
+    status,
+    data,
+    error: failed ? (data?.error ?? data?.status) : null,
+    error_code: failed ? 'COMMAND_FAILED' : null,
   };
 }

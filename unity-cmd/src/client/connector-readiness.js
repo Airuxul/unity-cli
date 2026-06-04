@@ -1,20 +1,19 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import { loadProfile, normalizeHostKind, resolveTarget, sleep } from './connection.js';
-import { cacheMatchesInstance, readEditorHttpCache } from './editor-http-cache.js';
 import { ping } from './command.js';
+import {
+  findInstanceByPort,
+  findInstanceByProject,
+  normalizeProjectPath,
+} from './instances-io.js';
 import {
   DEFAULT_TIMEOUT_MS,
   CONNECTOR_BUSY_STATES,
   CONNECTOR_FIELD,
   CONNECTOR_STATE,
-  EDITOR_HTTP_CACHE_STATUS,
   HEALTH_CONFIRM_CAP_MS,
   HEALTH_CONFIRM_READY_CAP_MS,
   HEALTH_CONFIRM_PING_RETRY_MS,
   HOST_KIND,
-  INSTANCES_DIR,
   PLAY_MODE,
   POLL_INTERVAL_MS,
   PROFILE_WAIT_INTERVAL_MS,
@@ -22,28 +21,18 @@ import {
   STABLE_TICKS_REQUIRED,
 } from '../constants.js';
 
-export function hashProjectPath(projectPath) {
-  const normalized = String(projectPath ?? '').replace(/\\/g, '/').toLowerCase();
-  return crypto.createHash('md5').update(normalized, 'utf8').digest('hex').slice(0, 16);
-}
+export {
+  hashProjectPath,
+  readInstanceFile,
+  findInstanceByPort,
+  findInstanceByProject,
+  normalizeProjectPath,
+} from './instances-io.js';
 
-export function readInstanceFile(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-export function findInstanceByPort(port) {
-  if (!port || !fs.existsSync(INSTANCES_DIR)) return null;
-  for (const name of fs.readdirSync(INSTANCES_DIR)) {
-    if (!name.endsWith('.json')) continue;
-    const inst = readInstanceFile(path.join(INSTANCES_DIR, name));
-    if (inst?.port === port) return inst;
-  }
-  return null;
+/** Unity project root for instance heartbeat matching (integration sets UNITY_CMD_WORKSPACE). */
+export function resolveWaitProjectPath() {
+  const fromEnv = process.env.UNITY_CMD_WORKSPACE?.trim();
+  return fromEnv && fromEnv.length > 0 ? fromEnv : process.cwd();
 }
 
 export function readConnectorState(inst) {
@@ -60,6 +49,9 @@ export function readCommandsReady(inst) {
 
 export function isEditorInstanceBusy(inst) {
   if (!inst || inst[CONNECTOR_FIELD.ListenerRunning] === false) return true;
+  if (inst.compile_errors === true) return true;
+  const phase = inst.supervisor_phase;
+  if (phase === 'Draining' || phase === 'Starting' || phase === 'BackoffForeign') return true;
   const cs = readConnectorState(inst);
   if (cs === CONNECTOR_STATE.Stopped || CONNECTOR_BUSY_STATES.has(cs)) return true;
   return !readCommandsReady(inst);
@@ -67,6 +59,26 @@ export function isEditorInstanceBusy(inst) {
 
 export function isEditorInstanceReady(inst) {
   return Boolean(inst) && !isEditorInstanceBusy(inst) && readCommandsReady(inst);
+}
+
+/** Instances heartbeat is the CLI readiness SSOT (editor-http.json is debug-only). */
+export function instanceMatchesTarget(target, inst, projectPath) {
+  if (!inst) return false;
+  if (inst.port != null && target?.port != null && inst.port !== target.port) return false;
+  if (projectPath && inst.projectPath) {
+    return normalizeProjectPath(inst.projectPath) === normalizeProjectPath(projectPath);
+  }
+  return true;
+}
+
+export function findInstanceForTarget(target, projectPath) {
+  const byPort = findInstanceByPort(target?.port);
+  if (byPort && instanceMatchesTarget(target, byPort, projectPath)) return byPort;
+  if (projectPath) {
+    const byProject = findInstanceByProject(projectPath);
+    if (byProject && instanceMatchesTarget(target, byProject, projectPath)) return byProject;
+  }
+  return byPort;
 }
 
 /**
@@ -111,15 +123,15 @@ export async function confirmEditorHealth(target, inst, { timeoutMs = HEALTH_CON
   }
   if (res.data[CONNECTOR_FIELD.ListenerRunning] === false) return { ok: false, reason: 'listener_down' };
   if (
-    inst[CONNECTOR_FIELD.SessionId] &&
+    inst?.[CONNECTOR_FIELD.SessionId] &&
     res.data[CONNECTOR_FIELD.SessionId] &&
     res.data[CONNECTOR_FIELD.SessionId] !== inst[CONNECTOR_FIELD.SessionId]
   ) {
     return { ok: false, reason: 'session_mismatch' };
   }
   if (
-    inst[CONNECTOR_FIELD.Generation] != null &&
-    res.data[CONNECTOR_FIELD.Generation] != null &&
+    inst?.[CONNECTOR_FIELD.Generation] != null &&
+    res.data?.[CONNECTOR_FIELD.Generation] != null &&
     res.data[CONNECTOR_FIELD.Generation] !== inst[CONNECTOR_FIELD.Generation]
   ) {
     return { ok: false, reason: 'generation_mismatch' };
@@ -182,8 +194,39 @@ async function confirmReadyViaHealth(target, inst, deadline, capMs) {
   return health.ok ? { ok: true, instance: inst, health: health.data } : null;
 }
 
-/** Wait until local Editor state source reports commands ready. */
-async function waitForLocalStateReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+function buildNotReadyFailure(inst) {
+  const connectorState = readConnectorState(inst);
+  const phase = inst?.supervisor_phase ?? null;
+  let hint =
+    'Unity Editor may be compiling or reloading. Run: unity-cmd --profile editor wait --timeout=120000';
+
+  if (inst?.compile_errors === true) {
+    hint =
+      'Unity reported compile errors. Fix Console errors, recompile, then unity-cmd wait.';
+  } else if (
+    connectorState === CONNECTOR_STATE.Reloading ||
+    phase === 'Draining' ||
+    phase === 'Starting' ||
+    inst?.http_status === 'stopped'
+  ) {
+    hint =
+      'Editor HTTP is restarting (domain reload). Run: unity-cmd --profile editor wait --timeout=120000';
+  }
+
+  return {
+    ok: false,
+    error: 'editor_not_ready',
+    error_code: 'EDITOR_NOT_READY',
+    hint,
+    connector_state: connectorState,
+    play_mode: readPlayMode(inst),
+    supervisor_phase: phase,
+    compile_errors: inst?.compile_errors === true,
+  };
+}
+
+/** Wait until local Editor instances heartbeat reports commands ready. */
+async function waitForLocalStateReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS, projectPath } = {}) {
   if (target?.connector_host && target.connector_host !== HOST_KIND.Editor) {
     return { ok: true };
   }
@@ -194,8 +237,7 @@ async function waitForLocalStateReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS }
   let stableTicks = 0;
 
   while (Date.now() < deadline) {
-    const inst = findInstanceByPort(target.port);
-    const cache = readEditorHttpCache();
+    const inst = findInstanceForTarget(target, projectPath);
 
     if (inst?.[CONNECTOR_FIELD.Generation] != null) {
       if (lastGeneration != null && inst[CONNECTOR_FIELD.Generation] !== lastGeneration) {
@@ -206,7 +248,7 @@ async function waitForLocalStateReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS }
     }
 
     if (inst) {
-      if (!cacheMatchesInstance(target, inst)) {
+      if (!instanceMatchesTarget(target, inst, projectPath)) {
         stableTicks = 0;
         lastTimestamp = 0;
         await sleep(POLL_INTERVAL_MS);
@@ -242,54 +284,26 @@ async function waitForLocalStateReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS }
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
-    } else if (
-      cache?.port === target.port &&
-      cache.status === EDITOR_HTTP_CACHE_STATUS.Running &&
-      cache.session_id
-    ) {
-      const confirmed = await confirmReadyViaHealth(
-        target,
-        { [CONNECTOR_FIELD.SessionId]: cache.session_id, [CONNECTOR_FIELD.Generation]: cache.generation },
-        deadline,
-        HEALTH_CONFIRM_CAP_MS,
-      );
-      if (confirmed) return { ...confirmed, instance: null, from_cache: true };
     }
 
     await sleep(POLL_INTERVAL_MS);
   }
 
-  const inst = findInstanceByPort(target.port);
+  const inst = findInstanceForTarget(target, projectPath);
   const recovered = await tryRecoverStaleReloadingHeartbeat(target, inst, deadline);
   if (recovered) return recovered;
 
-  const cache = readEditorHttpCache();
-  const connectorState = readConnectorState(inst);
-  const hint =
-    connectorState === CONNECTOR_STATE.Reloading ||
-    cache?.status === EDITOR_HTTP_CACHE_STATUS.Stopped
-      ? 'Editor HTTP is restarting after a domain reload. Retry in a few seconds or focus the Editor.'
-      : 'Unity Editor may be compiling or reloading. Wait and retry, or focus the Editor window.';
-
-  return {
-    ok: false,
-    error: 'editor_not_ready',
-    error_code: 'EDITOR_NOT_READY',
-    hint,
-    connector_state: connectorState,
-    play_mode: readPlayMode(inst),
-    cache_status: cache?.status ?? null,
-  };
+  return buildNotReadyFailure(inst);
 }
 
 /**
  * Unified connector readiness wait for all host kinds:
- * - editor: local state source (instance-file + cache + health confirm)
- * - editor_play/player: remote state source (health polling)
+ * - editor: instances.json SSOT + /health confirm
+ * - editor_play/player: remote /health polling
  */
-export async function waitForConnectorReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function waitForConnectorReady(target, { timeoutMs = DEFAULT_TIMEOUT_MS, projectPath } = {}) {
   if (target?.connector_host === HOST_KIND.Editor || !target?.connector_host) {
-    return waitForLocalStateReady(target, { timeoutMs });
+    return waitForLocalStateReady(target, { timeoutMs, projectPath });
   }
   return waitForRemoteStateReady(target, { timeoutMs });
 }
@@ -298,6 +312,7 @@ export async function waitForProfileReady({
   profile,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   logProgress = true,
+  projectPath = resolveWaitProjectPath(),
 } = {}) {
   const profileName = profile ?? process.env.UNITY_CMD_PROFILE ?? null;
   if (!profileName) return null;
@@ -324,7 +339,10 @@ export async function waitForProfileReady({
     if (hostKind === HOST_KIND.Editor) {
       const ready = await waitForLocalStateReady(
         { host: saved.host, port: saved.port, connector_host: HOST_KIND.Editor },
-        { timeoutMs: Math.min(remainingMs, Math.floor(timeoutMs * 0.75)) },
+        {
+          timeoutMs: Math.min(remainingMs, Math.floor(timeoutMs * 0.75)),
+          projectPath,
+        },
       );
       if (!ready.ok) {
         await sleep(PROFILE_WAIT_INTERVAL_MS);
@@ -336,11 +354,16 @@ export async function waitForProfileReady({
       profile: profileName,
       timeoutMs: Math.min(HEALTH_CONFIRM_READY_CAP_MS, remainingMs),
       verify: true,
+      projectPath,
     });
     if (verified?.host) return verified;
     await sleep(PROFILE_WAIT_INTERVAL_MS);
   }
 
-  return resolveTarget({ profile: profileName, timeoutMs: HEALTH_CONFIRM_CAP_MS, verify: true });
+  return resolveTarget({
+    profile: profileName,
+    timeoutMs: HEALTH_CONFIRM_CAP_MS,
+    verify: true,
+    projectPath,
+  });
 }
-

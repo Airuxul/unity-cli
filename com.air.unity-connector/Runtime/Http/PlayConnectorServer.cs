@@ -11,7 +11,6 @@ namespace Air.UnityConnector
     internal sealed class PlayConnectorServer : IConnectorServer
     {
         private const string BridgeNamePrefix = "Air.UnityConnector.Bridge.";
-        private const string LegacyBridgeNamePrefix = "UnityCliConnector.Bridge.";
         private readonly ConnectorServerCore _core;
         private GameObject _driver;
 
@@ -27,8 +26,24 @@ namespace Air.UnityConnector
                 commands.GetCommandResponse,
                 commands,
                 ConnectorHealthMetadata.Default,
-                onBeforeDrain: () => RuntimeJobStateManager.Tick(hostName),
-                onStarted: EnsureBridge);
+                onBeforeDrain: () =>
+                {
+                    RuntimeJobStateManager.Tick(hostName);
+                    PendingHttpResponses.TryCompleteAll(hostName, id => RuntimeJobStateManager.Get(hostName, id));
+                },
+                onStarted: EnsureBridge,
+                registerPendingHttp: (commandId, requestId, writeJson, releaseSlot) =>
+                    PendingHttpResponses.Register(
+                        hostName,
+                        commandId,
+                        requestId,
+                        writeJson,
+                        () =>
+                        {
+                            releaseSlot?.Invoke();
+                            _core.Scheduler.ReleaseCommandSlot();
+                        },
+                        id => RuntimeJobStateManager.Get(hostName, id)));
         }
 
         public string HostName { get; }
@@ -40,18 +55,18 @@ namespace Air.UnityConnector
         public void Start()
         {
             ConnectorSerialization.EnsureRegistered();
-            _core.TryStart(Debug.Log, Debug.LogError);
+            _core.TryStart(ConnectorLog.LogCallback, ConnectorLog.LogErrorCallback);
         }
 
         public void Stop()
         {
-            _core.Stop(Debug.Log);
+            _core.Stop(ConnectorLog.LogCallback);
             DisposeBridge();
         }
 
         public void StopForAssemblyReload()
         {
-            _core.Stop(Debug.Log);
+            _core.Stop(ConnectorLog.LogCallback);
             DisposeBridge(immediate: true);
             CleanupStaleBridgeObjects(immediate: true);
         }
@@ -119,8 +134,7 @@ namespace Air.UnityConnector
         }
 
         private static bool IsBridgeObjectName(string name) =>
-            name.StartsWith(BridgeNamePrefix, StringComparison.Ordinal)
-            || name.StartsWith(LegacyBridgeNamePrefix, StringComparison.Ordinal);
+            name.StartsWith(BridgeNamePrefix, StringComparison.Ordinal);
 
         private sealed class BridgeDriver : MonoBehaviour
         {

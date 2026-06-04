@@ -13,7 +13,7 @@ namespace Air.UnityConnector
 
         public static void Transition(string site, string message)
         {
-            Debug.Log($"{Prefix} {site}: {message} | {FormatFlags()}");
+            ConnectorLog.Log($"{Prefix} {site}: {message} | {FormatFlags()}");
         }
 
         public static string FormatFlags() =>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using Air.UnityConnector;
@@ -39,7 +40,27 @@ namespace Air.UnityConnector
                 EditorHttpSession.MarkCatalogReady,
                 wakeMainThread: EditorEditorLoopWake.Force,
                 canAcceptCommand: CanAcceptCommand,
-                logLifecycle: false);
+                logLifecycle: false,
+                registerPendingHttp: RegisterPendingHttp);
+        }
+
+        static void RegisterPendingHttp(
+            string commandId,
+            string requestId,
+            Action<int, Dictionary<string, object>> writeJson,
+            Action releaseSlot)
+        {
+            PendingHttpResponses.Register(
+                HostKind.Editor,
+                commandId,
+                requestId,
+                writeJson,
+                () =>
+                {
+                    releaseSlot?.Invoke();
+                    Instance.Scheduler.ReleaseCommandSlot();
+                },
+                EditorJobStateManager.Get);
         }
 
         static bool CanAcceptCommand()
@@ -68,9 +89,12 @@ namespace Air.UnityConnector
         public void Start() => TryStart();
 
         public bool TryStart(bool requirePortFree = true) =>
-            _core.TryStart(Debug.Log, Debug.LogError, requirePortFree);
+            _core.TryStart(ConnectorLog.LogCallback, ConnectorLog.LogErrorCallback, requirePortFree);
 
-        public void Stop() => _core.Stop(Debug.Log);
+        public bool TryStartOnPort(int port, bool requirePortFree = true) =>
+            _core.TryStartOnPort(port, ConnectorLog.LogCallback, ConnectorLog.LogErrorCallback, requirePortFree);
+
+        public void Stop() => _core.Stop(ConnectorLog.LogCallback);
 
         public bool TryProbeHealth(int timeoutMs, int attempts, out string error) =>
             _core.TryProbeHealth(

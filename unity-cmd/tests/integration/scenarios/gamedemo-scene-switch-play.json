@@ -1,0 +1,195 @@
+{
+  "name": "gamedemo-scene-switch-play",
+  "description": "GameDemo: open StatUp -> Boot in Edit Mode, then Play; Editor :6547 stays up; :6795 must not serve in Editor Play",
+  "steps": [
+    {
+      "name": "00_force_stop_before_suite",
+      "command": "stop",
+      "timeoutMs": 20000,
+      "expect": { "ok": true }
+    },
+    {
+      "name": "00b_wait_after_forced_stop",
+      "sleepMs": 1500
+    },
+    {
+      "name": "01_ping_editor",
+      "command": "ping",
+      "expect": { "ok": true, "data": { "listener_running": true, "commands_ready": true } },
+      "expectConnectorBuild": 40
+    },
+    {
+      "name": "02_assert_statup_scene_asset",
+      "assertFile": {
+        "relativePath": "Assets/Scenes/StatUp.unity",
+        "minBytes": 100
+      }
+    },
+    {
+      "name": "03_assert_boot_scene_asset",
+      "assertFile": {
+        "relativePath": "Assets/Scenes/Boot.unity",
+        "minBytes": 100
+      }
+    },
+    {
+      "name": "04_open_statup_scene",
+      "command": "exec",
+      "timeoutMs": 60000,
+      "args": [
+        "--code",
+        "return UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/StatUp.unity\").name;"
+      ],
+      "expect": { "ok": true, "dataResultContains": "StatUp" }
+    },
+    {
+      "name": "05_sleep_after_statup",
+      "sleepMs": 800
+    },
+    {
+      "name": "06_open_boot_scene",
+      "command": "exec",
+      "timeoutMs": 60000,
+      "args": [
+        "--code",
+        "return UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/Boot.unity\").name;"
+      ],
+      "expect": { "ok": true, "dataResultContains": "Boot" }
+    },
+    {
+      "name": "07_sleep_after_boot",
+      "sleepMs": 800
+    },
+    {
+      "name": "08_ping_editor_after_scene_switch",
+      "command": "ping",
+      "expect": {
+        "ok": true,
+        "data": { "listener_running": true, "commands_ready": true, "play_mode": "edit" }
+      }
+    },
+    {
+      "name": "09_state_edit_before_play",
+      "command": "state",
+      "expect": { "ok": true, "data": { "is_playing": false, "play_mode": "edit" } }
+    },
+    {
+      "name": "10_enter_play_from_boot",
+      "command": "play",
+      "timeoutMs": 30000,
+      "expect": { "ok": true }
+    },
+    {
+      "name": "11_sleep_play_settle",
+      "sleepMs": 2500
+    },
+    {
+      "name": "12_wait_editor_play_endpoint",
+      "waitProfile": "editor-play",
+      "timeoutMs": 30000
+    },
+    {
+      "name": "13_ping_editor_during_play",
+      "command": "ping",
+      "expect": {
+        "ok": true,
+        "data": { "listener_running": true, "commands_ready": true, "play_mode": "playing" }
+      }
+    },
+    {
+      "name": "14_ping_player_profile_should_fail_in_editor_play",
+      "profile": "package-play",
+      "command": "ping",
+      "args": ["--timeout", "800"],
+      "timeoutMs": 12000,
+      "expectFailure": true,
+      "expectErrorCode": "NO_INSTANCE"
+    },
+    {
+      "name": "15_state_during_play",
+      "command": "state",
+      "expect": { "ok": true, "data": { "is_playing": true } }
+    },
+    {
+      "name": "16_echo_runtime_on_editor_play",
+      "hostKind": "editor_play",
+      "command": "echo",
+      "expect": { "data": { "channel": "runtime" } }
+    },
+    {
+      "name": "17_exit_play",
+      "command": "stop",
+      "timeoutMs": 30000,
+      "expect": { "ok": true }
+    },
+    {
+      "name": "18_sleep_after_stop",
+      "sleepMs": 2000
+    },
+    {
+      "name": "19_ping_editor_after_play",
+      "command": "ping",
+      "expect": {
+        "ok": true,
+        "data": { "listener_running": true, "commands_ready": true, "play_mode": "edit" }
+      }
+    },
+    {
+      "name": "20_state_after_play",
+      "command": "state",
+      "expect": { "ok": true, "data": { "is_playing": false, "play_mode": "edit" } }
+    },
+    {
+      "name": "21_repeat_scene_switch_then_play",
+      "repeat": 1,
+      "steps": [
+        {
+          "name": "open_statup",
+          "command": "exec",
+          "timeoutMs": 60000,
+          "args": [
+            "--code",
+            "return UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/StatUp.unity\").name;"
+          ],
+          "expect": { "ok": true }
+        },
+        { "name": "sleep_a", "sleepMs": 500 },
+        {
+          "name": "open_boot",
+          "command": "exec",
+          "timeoutMs": 60000,
+          "args": [
+            "--code",
+            "return UnityEditor.SceneManagement.EditorSceneManager.OpenScene(\"Assets/Scenes/Boot.unity\").name;"
+          ],
+          "expect": { "ok": true }
+        },
+        { "name": "sleep_b", "sleepMs": 500 },
+        {
+          "name": "play",
+          "command": "play",
+          "timeoutMs": 30000,
+          "expect": { "ok": true }
+        },
+        { "name": "sleep_play", "sleepMs": 2000 },
+        {
+          "name": "ping_editor",
+          "command": "ping",
+          "expect": { "ok": true, "data": { "listener_running": true } }
+        },
+        {
+          "name": "stop",
+          "command": "stop",
+          "timeoutMs": 30000,
+          "expect": { "ok": true }
+        },
+        { "name": "sleep_stop", "sleepMs": 1500 },
+        {
+          "name": "ping_editor_after",
+          "command": "ping",
+          "expect": { "ok": true, "data": { "listener_running": true, "commands_ready": true } }
+        }
+      ]
+    }
+  ]
+}

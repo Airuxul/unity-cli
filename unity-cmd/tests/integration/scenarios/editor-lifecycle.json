@@ -16,7 +16,7 @@
       "name": "01_ping_editor",
       "command": "ping",
       "expect": { "ok": true },
-      "expectConnectorBuild": 39
+      "expectConnectorBuild": 40
     },
     {
       "name": "02_state_edit",
@@ -50,8 +50,13 @@
     {
       "name": "03b_compile_scripts",
       "command": "compile",
-      "timeoutMs": 20000,
+      "timeoutMs": 60000,
       "expect": { "ok": true }
+    },
+    {
+      "name": "03c_wait_after_compile",
+      "waitProfile": "editor",
+      "timeoutMs": 120000
     },
     {
       "name": "04_echo_editor",
@@ -105,7 +110,7 @@
       "hostKind": "editor_play",
       "command": "ping",
       "expect": { "ok": true },
-      "expectConnectorBuild": 39
+      "expectConnectorBuild": 40
     },
     {
       "name": "12b_reject_compile_on_editor_play",

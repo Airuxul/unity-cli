@@ -191,7 +191,6 @@ export async function executeRemoteCommand(command, flags, timeoutMs, deps = def
       : enrichFailure(res, {
           command: resolved.command,
           status: res.status,
-          deferred: Boolean(res.command_id),
         });
     return cliResult(res.ok ? 0 : 1, { json: out });
   } catch (err) {

@@ -25,7 +25,7 @@ namespace Air.UnityConnector
             InvokeRegistry.Instance = DiscoveryInvokeRegistry.Instance;
             InvokeParameterBinding.Bind = CliParamBinder.Bind;
             InvokeParameterBinding.Describe = CliParamBinder.Describe;
-            CliCommandDiscovery.LogWarning = msg => Debug.LogWarning(msg);
+            CliCommandDiscovery.LogWarning = ConnectorLog.LogWarning;
         }
     }
 }

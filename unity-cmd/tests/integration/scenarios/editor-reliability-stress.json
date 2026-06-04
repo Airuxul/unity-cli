@@ -1,0 +1,106 @@
+{
+  "name": "editor-reliability-stress",
+  "description": "CONN-10 stress: compile cycles + play/stop + ping/state after domain reloads (requires build 40+)",
+  "steps": [
+    {
+      "name": "00_wait_editor",
+      "waitProfile": "editor",
+      "timeoutMs": 120000
+    },
+    {
+      "name": "01_ping_baseline",
+      "command": "ping",
+      "expect": { "ok": true },
+      "expectConnectorBuild": 40
+    },
+    {
+      "name": "02_compile_stress",
+      "repeat": 3,
+      "steps": [
+        {
+          "name": "compile",
+          "command": "compile",
+          "timeoutMs": 120000,
+          "expect": { "ok": true }
+        },
+        {
+          "name": "wait_after_compile",
+          "waitProfile": "editor",
+          "timeoutMs": 120000
+        },
+        {
+          "name": "ping_after_compile",
+          "command": "ping",
+          "expect": {
+            "ok": true,
+            "data": { "listener_running": true, "commands_ready": true }
+          }
+        },
+        {
+          "name": "echo_after_compile",
+          "command": "echo",
+          "args": ["--message", "post-compile"],
+          "expect": { "ok": true }
+        }
+      ]
+    },
+    {
+      "name": "03_play_stop_stress",
+      "repeat": 5,
+      "steps": [
+        {
+          "name": "play",
+          "command": "play",
+          "timeoutMs": 60000,
+          "expect": { "ok": true }
+        },
+        {
+          "name": "settle_play",
+          "sleepMs": 2000
+        },
+        {
+          "name": "ping_during_play",
+          "command": "ping",
+          "expect": { "ok": true, "data": { "listener_running": true } }
+        },
+        {
+          "name": "stop",
+          "command": "stop",
+          "timeoutMs": 60000,
+          "expect": { "ok": true }
+        },
+        {
+          "name": "settle_edit",
+          "sleepMs": 1500
+        },
+        {
+          "name": "wait_edit",
+          "waitProfile": "editor",
+          "timeoutMs": 60000
+        },
+        {
+          "name": "ping_edit",
+          "command": "ping",
+          "expect": {
+            "ok": true,
+            "data": { "listener_running": true, "play_mode": "edit", "commands_ready": true }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04_state_final",
+      "command": "state",
+      "expect": {
+        "ok": true,
+        "data": { "is_playing": false, "play_mode": "edit" },
+        "dataHas": ["connector_state", "commands_ready", "supervisor_phase", "connector_build"]
+      }
+    },
+    {
+      "name": "05_ping_final",
+      "command": "ping",
+      "expect": { "ok": true, "data": { "commands_ready": true, "listener_running": true } }
+    }
+  ]
+}

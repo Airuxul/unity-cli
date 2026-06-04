@@ -7,7 +7,7 @@
       "command": "ping",
       "timeoutMs": 20000,
       "expect": { "ok": true },
-      "expectConnectorBuild": 39
+      "expectConnectorBuild": 40
     },
 
     {

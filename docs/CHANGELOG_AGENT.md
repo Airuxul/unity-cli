@@ -1,5 +1,12 @@
 # Agent Changelog — `unity-cli`
 
+## 2026-06-04
+
+- **CONN-10:** Sync `POST /command` (build 40); removed CLI HTTP 202 poll (`command-status.js`, `editor-http-cache.js`).
+- **CLI SSOT:** `wait` / `resolveTarget` use `~/.unity-cmd/instances/*.json`; `resolveWaitProjectPath()` + `UNITY_CMD_WORKSPACE` for integration cwd ≠ Unity root.
+- **Editor:** `EditorServerSupervisor` single writer; `TryRecoverStuckDomainReload`; `PendingHttpResponses` for held HTTP.
+- **Tests:** `editor-lifecycle` post-compile wait; `compile-recompile-cycle`, `editor-reliability-stress`, `gamedemo-scene-switch-play`; docs synced for `UNITY_CMD_WORKSPACE`.
+
 ## 2026-06-02
 
 - Added `docs/DOC_GOVERNANCE.md` (bilingual README layout, meta AirUnityPackage link)

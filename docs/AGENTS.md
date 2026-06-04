@@ -1,6 +1,6 @@
 # AGENTS — `unity-cli`
 
-**Last Updated:** 2026-06-02 · **Owner:** package maintainers · **Scope:** canonical agent entry (this repository, English)
+**Last Updated:** 2026-06-04 · **Owner:** package maintainers · **Scope:** canonical agent entry (this repository, English)
 
 ## Canonical rule
 
@@ -67,6 +67,7 @@ For **running** Unity automation, use the meta-repo skill [`.cursor/skills/unity
 
 - **Command source of truth:** Unity `POST /list` → `~/.unity-cmd/cache/catalog-<host>:<port>.json`.
 - **Profiles:** `editor` :6547, `editor_play` :6794, `player` :6795.
-- **After connector C# changes:** `unity-cmd --profile editor compile` (default timeout 20s).
+- **After connector C# changes:** `wait` → `ping` → `compile` (build ≥ `MIN_CONNECTOR_BUILD`, currently **40**).
+- **Integration:** set `UNITY_CMD_WORKSPACE` to the Unity project root when running tests from `unity-cmd/` (see [EDITOR_SERVER_RELIABILITY.zh-CN.md](EDITOR_SERVER_RELIABILITY.zh-CN.md)).
 
 See [README.md](../README.md#ai--agent-usage) for examples.

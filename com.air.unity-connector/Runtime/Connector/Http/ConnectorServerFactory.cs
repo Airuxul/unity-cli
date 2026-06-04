@@ -17,7 +17,8 @@ namespace Air.UnityConnector.Http
             Action wakeMainThread = null,
             Func<bool> canAcceptCommand = null,
             Action onStarted = null,
-            bool logLifecycle = true)
+            bool logLifecycle = true,
+            Action<string, string, Action<int, Dictionary<string, object>>, Action> registerPendingHttp = null)
         {
             var scheduler = new ConnectorMainThreadScheduler(
                 host,
@@ -25,7 +26,8 @@ namespace Air.UnityConnector.Http
                 onCatalogReady,
                 onBeforeDrain,
                 wakeMainThread,
-                canAcceptCommand);
+                canAcceptCommand,
+                registerPendingHttp);
 
             var endpoint = new ConnectorHttpEndpoint(
                 new ConnectorRequestDispatcher(
