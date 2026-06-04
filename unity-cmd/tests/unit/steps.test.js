@@ -3,7 +3,29 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runStep } from '../integration/lib/steps.mjs';
+import { flattenScenarioSteps, runStep } from '../integration/lib/steps.mjs';
+
+test('flattenScenarioSteps expands repeat blocks with stable names', () => {
+  const flat = flattenScenarioSteps([
+    { name: 'a', command: 'ping' },
+    {
+      name: 'stress',
+      repeat: 2,
+      steps: [
+        { name: 'play', command: 'play' },
+        { name: 'stop', command: 'stop' },
+      ],
+    },
+    { name: 'z', command: 'state' },
+  ]);
+  assert.equal(flat.length, 6);
+  assert.equal(flat[0].name, 'a');
+  assert.equal(flat[1].name, 'stress_1_play');
+  assert.equal(flat[2].name, 'stress_1_stop');
+  assert.equal(flat[3].name, 'stress_2_play');
+  assert.equal(flat[4].name, 'stress_2_stop');
+  assert.equal(flat[5].name, 'z');
+});
 
 test('runStep sleepMs passes without CLI', async () => {
   const t0 = Date.now();

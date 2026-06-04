@@ -14,6 +14,34 @@ function expandEnv(text) {
   return text.replace(/\$\{([A-Z0-9_]+)\}/gi, (_, key) => process.env[key] ?? '');
 }
 
+/**
+ * Expand scenario steps; `repeat` blocks become numbered sub-steps for reporting.
+ * @param {object[]} steps
+ * @returns {object[]}
+ */
+export function flattenScenarioSteps(steps) {
+  const flat = [];
+  for (const step of steps ?? []) {
+    const count = Number(step.repeat);
+    if (count > 0 && Array.isArray(step.steps) && step.steps.length > 0) {
+      const baseName = step.name ?? 'repeat';
+      for (let i = 0; i < count; i++) {
+        for (const sub of step.steps) {
+          const subName = sub.name ?? sub.command ?? 'step';
+          flat.push({
+            ...sub,
+            name: `${baseName}_${i + 1}_${subName}`,
+            _repeatIndex: i + 1,
+          });
+        }
+      }
+      continue;
+    }
+    flat.push(step);
+  }
+  return flat;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(__dirname, '..', '..', '..', 'bin', 'unity-cmd.js');
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { waitForProfileReady } from '../../src/client/connector-readiness.js';
 import { HOST_KIND, PROFILE_BY_HOST_KIND, INTEGRATION_ATTACH_TIMEOUT_MS, INTEGRATION_STEP_SLEEP_MS } from '../../src/constants.js';
 import { formatProfileCreateExample } from '../../src/constants.js';
-import { runStep } from './lib/steps.mjs';
+import { flattenScenarioSteps, runStep } from './lib/steps.mjs';
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -50,11 +50,12 @@ async function main() {
   }
 
   const scenario = JSON.parse(fs.readFileSync(SCENARIO, 'utf8'));
+  const expandedSteps = flattenScenarioSteps(scenario.steps);
   const results = [];
   let failed = false;
   let inPlay = false;
 
-  for (const step of scenario.steps) {
+  for (const step of expandedSteps) {
     const timeoutMs = step.timeoutMs ?? INTEGRATION_ATTACH_TIMEOUT_MS;
     const stepStarted = Date.now();
     try {

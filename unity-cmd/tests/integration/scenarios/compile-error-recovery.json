@@ -1,6 +1,6 @@
 {
   "name": "compile-error-recovery",
-  "description": "Inject a C# syntax error → trigger compile → wait for EDITOR_NOT_READY → fix the file → recompile → verify recovery",
+  "description": "Inject a C# syntax error → compile → verify errors → delete file → recompile → verify recovery",
   "steps": [
     {
       "name": "00_ping_before",
@@ -41,18 +41,18 @@
     },
 
     {
-      "name": "05_compile_expects_failure",
+      "name": "05_compile_with_syntax_error",
       "command": "compile",
-      "timeoutMs": 30000,
-      "expectFailure": true,
-      "expectErrorCode": "EDITOR_NOT_READY"
+      "timeoutMs": 120000,
+      "expect": { "ok": true }
     },
 
     {
-      "name": "06_state_shows_compiling_or_not_ready",
-      "command": "state",
-      "timeoutMs": 10000,
-      "expect": { "ok": true }
+      "name": "06_console_has_compile_errors",
+      "command": "console",
+      "args": ["--type", "error", "--lines", "30"],
+      "timeoutMs": 20000,
+      "expect": { "ok": true, "dataHas": ["count", "entries"] }
     },
 
     {

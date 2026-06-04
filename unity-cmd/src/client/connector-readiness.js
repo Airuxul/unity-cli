@@ -89,12 +89,17 @@ export function normalizeHealthState(data) {
 }
 
 export async function confirmEditorHealth(target, inst, { timeoutMs = HEALTH_CONFIRM_CAP_MS } = {}) {
-  const res = await ping(target, {
-    timeoutMs,
-    retryOnDisconnect: true,
-    maxAttempts: PING_MAX_ATTEMPTS,
-    retryIntervalMs: HEALTH_CONFIRM_PING_RETRY_MS,
-  });
+  let res;
+  try {
+    res = await ping(target, {
+      timeoutMs,
+      retryOnDisconnect: true,
+      maxAttempts: PING_MAX_ATTEMPTS,
+      retryIntervalMs: HEALTH_CONFIRM_PING_RETRY_MS,
+    });
+  } catch {
+    return { ok: false, reason: 'health_unreachable' };
+  }
   if (!res.ok || !res.data) return { ok: false, reason: 'health_unreachable' };
 
   if (res.data[CONNECTOR_FIELD.CommandsReady] !== true) {

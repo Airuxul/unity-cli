@@ -206,17 +206,22 @@ export async function resolveTarget({ profile, timeoutMs = DEFAULT_TIMEOUT_MS, v
     (readConnectorState(inst) === CONNECTOR_STATE.Reloading ||
       cache?.status === EDITOR_HTTP_CACHE_STATUS.Stopped);
   if (likelyRestarting) {
-    try {
-      const res = await probeHealth(saved.host, port, RESOLVE_TARGET_HEALTH_TIMEOUT_MS);
-      if (res.ok && hostKindMatches(expectedKind, res.data?.host)) {
-        return {
-          ...base,
-          connector_host: res.data?.host ?? expectedKind,
-          connector_build: res.data?.connector_build,
-        };
+    const restartDeadline = Date.now() + timeoutMs;
+    while (Date.now() < restartDeadline) {
+      try {
+        const remaining = Math.max(CONNECTION_RETRY_MIN_MS, restartDeadline - Date.now());
+        const res = await probeHealth(saved.host, port, Math.min(RESOLVE_TARGET_HEALTH_TIMEOUT_MS, remaining));
+        if (res.ok && hostKindMatches(expectedKind, res.data?.host)) {
+          return {
+            ...base,
+            connector_host: res.data?.host ?? expectedKind,
+            connector_build: res.data?.connector_build,
+          };
+        }
+      } catch {
+        // heartbeat may lag behind a live listener during play/reload
       }
-    } catch {
-      // reload: fail fast; caller uses diagnostics + wait
+      await sleep(RESOLVE_TARGET_RETRY_INTERVAL_MS);
     }
     return null;
   }

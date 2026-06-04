@@ -1,6 +1,6 @@
 {
   "name": "editor-lifecycle",
-  "description": "Editor edit mode tools ù?Play ù?editor_play runtime + editor screenshot/profiler ù?stop ù?edit mode again",
+  "description": "Editor edit mode tools ??Play ??editor_play runtime + editor screenshot/profiler ??stop ??edit mode again",
   "steps": [
     {
       "name": "00_force_stop_before_suite",
@@ -134,8 +134,10 @@
       }
     },
     {
-      "name": "13b_settle_editor_http_during_play",
-      "sleepMs": 800
+      "name": "13b_ping_editor_during_play",
+      "command": "ping",
+      "timeoutMs": 60000,
+      "expect": { "ok": true, "data": { "listener_running": true } }
     },
     {
       "name": "14_list_catalog_editor_during_play",
@@ -258,6 +260,59 @@
         "forbidden": ["echo.runtime"],
         "forbiddenScopes": ["runtime"]
       }
+    },
+    {
+      "name": "26_play_stop_stress",
+      "repeat": 5,
+      "timeoutMs": 120000,
+      "steps": [
+        {
+          "name": "play",
+          "command": "play",
+          "timeoutMs": 60000,
+          "expect": { "ok": true }
+        },
+        {
+          "name": "settle_play",
+          "sleepMs": 2000
+        },
+        {
+          "name": "stop",
+          "command": "stop",
+          "timeoutMs": 60000,
+          "expect": { "ok": true }
+        },
+        {
+          "name": "settle_edit",
+          "sleepMs": 1500
+        },
+        {
+          "name": "ping_editor",
+          "command": "ping",
+          "timeoutMs": 60000,
+          "expect": { "ok": true, "data": { "listener_running": true, "play_mode": "edit" } }
+        },
+        {
+          "name": "echo_cycle",
+          "command": "echo",
+          "args": ["--message", "play-stop-stress"],
+          "expect": { "ok": true, "data": { "channel": "editor" } }
+        }
+      ]
+    },
+    {
+      "name": "27_state_after_play_stop_stress",
+      "command": "state",
+      "expect": {
+        "ok": true,
+        "data": { "is_playing": false, "play_mode": "edit" },
+        "dataHas": ["connector_state", "commands_ready", "supervisor_phase"]
+      }
+    },
+    {
+      "name": "28_ping_after_play_stop_stress",
+      "command": "ping",
+      "expect": { "ok": true, "data": { "listener_running": true, "commands_ready": true } }
     }
   ]
 }
